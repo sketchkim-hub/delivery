@@ -879,7 +879,7 @@ tbody td.addr-cell { color: var(--muted); font-size: 0.78rem; }
       <span class="tab-icon">📋</span>목록
       <span class="badge" id="mobBadge" style="display:none;">0</span>
     </button>
-    <button class="tab" id="tabMap" onclick="switchTab('map')">
+    <button class="tab" id="tabMap" onclick="switchTab('map'); if(rows.length) setTimeout(calcOptimalRoute, 300);">
       <span class="tab-icon">🗺️</span>동선
     </button>
   </div>
@@ -1398,8 +1398,25 @@ function switchTab(tab) {
   } else if(tab === 'map') {
     mapPanel.classList.add('mob-active');
     tabMap && tabMap.classList.add('active');
-    // 지도 탭 전환 시 지도 재렌더
-    setTimeout(() => { if(window._kakaoMap) kakao.maps.event.trigger(window._kakaoMap,'resize'); }, 100);
+    // 지도가 없으면 초기화, 있으면 resize
+    setTimeout(() => {
+      if(!window._kakaoMap && window.kakao && kakao.maps) {
+        kakao.maps.load(() => {
+          initKakaoMap();
+          setTimeout(() => kakao.maps.event.trigger(window._kakaoMap,'resize'), 200);
+        });
+      } else if(window._kakaoMap) {
+        kakao.maps.event.trigger(window._kakaoMap,'resize');
+      } else {
+        // kakao 자체가 없으면 안내
+        const rl = document.getElementById('routeList');
+        if(rl && !rl.innerHTML.includes('동선 계산')) {
+          rl.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted);">
+            <div style="font-size:2rem;margin-bottom:8px;">🗺️</div>
+            상단 <b>🗺️ 동선 계산</b> 버튼을<br>눌러주세요</div>`;
+        }
+      }
+    }, 150);
   }
 }
 
