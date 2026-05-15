@@ -365,8 +365,9 @@ body {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   background: var(--ink);
-  z-index: 200;
+  z-index: 300;
   height: 56px;
+  pointer-events: auto;
 }
 .mob-tab-bar .tabs {
   display: grid;
@@ -410,22 +411,22 @@ body {
   .top-bar .date-badge { display: none; }
   .top-bar .export-btn { padding: 6px 12px; font-size: 0.78rem; }
 
-  /* 2단 → 1단, 높이 고정 해제 */
   .layout {
     grid-template-columns: 1fr;
     height: auto;
-    min-height: calc(100vh - 50px);
   }
 
-  /* 패널 전환 방식 */
+  /* 패널 전환 */
   .input-panel {
     display: none;
     border-right: none;
     border-bottom: 1px solid var(--border);
     padding: 14px;
-    padding-bottom: 70px; /* 탭바 높이 */
-    overflow-y: auto;
-    max-height: calc(100vh - 50px);
+    padding-bottom: 80px;
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+    height: calc(100vh - 50px);
+    box-sizing: border-box;
   }
   .input-panel.mob-active { display: flex; }
 
@@ -433,7 +434,8 @@ body {
     display: none;
     padding-bottom: 70px;
     overflow: auto;
-    max-height: calc(100vh - 50px);
+    height: calc(100vh - 50px);
+    box-sizing: border-box;
   }
   .table-panel.mob-active { display: flex; }
 
@@ -454,13 +456,13 @@ body {
   .store-btn { padding: 12px 8px; font-size: 0.9rem; }
 
   /* 지역구 버튼 */
-  .gu-btn { padding: 11px 4px; font-size: 0.82rem; }
+  .gu-btn { padding: 14px 4px; font-size: 0.9rem; }
 
   /* 품목 버튼 */
-  .item-btn { padding: 11px 4px; font-size: 0.82rem; }
+  .item-btn { padding: 14px 4px; font-size: 0.9rem; }
 
   /* 배송시간 버튼 */
-  .time-btn { padding: 13px 6px; font-size: 0.88rem; }
+  .time-btn { padding: 14px 6px; font-size: 0.9rem; }
 
   /* 추가 버튼 */
   .add-btn { padding: 15px; font-size: 1.05rem; }
