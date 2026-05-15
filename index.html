@@ -1039,28 +1039,33 @@ function save() {
 // ── 점포 ──
 function renderStores() {
   const btns = stores.map((s,i)=>`
-    <div style="position:relative;display:flex;">
+    <div style="position:relative;display:flex;grid-column:auto;">
       <button class="store-btn${selStore===i?' active':''}"
         onclick="pickStore(${i})"
         tabindex="0"
         data-idx="${i}"
-        title="${s} (Tab으로 이동, Enter/Space로 선택)"
-        style="flex:1;">${s}</button>
-      <button onclick="deleteStore(${i})" tabindex="-1" title="점포 삭제" style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:0.65rem;color:rgba(0,0,0,0.25);padding:2px 3px;line-height:1;border-radius:3px;" onmouseover="this.style.color='#d4460a'" onmouseout="this.style.color='rgba(0,0,0,0.25)'">✕</button>
+        style="flex:1;padding-right:22px;">${s}</button>
+      <button onclick="deleteStore(${i})" tabindex="-1"
+        style="position:absolute;top:4px;right:4px;background:none;border:none;cursor:pointer;font-size:0.65rem;color:rgba(0,0,0,0.25);padding:2px 3px;line-height:1;border-radius:3px;touch-action:manipulation;"
+        onmouseover="this.style.color='#d4460a'" onmouseout="this.style.color='rgba(0,0,0,0.25)'">✕</button>
     </div>`).join('');
-  const empty = stores.length === 0
-    ? `<div style="grid-column:1/-1;text-align:center;padding:12px 0 6px;font-size:0.78rem;color:var(--muted);">＋ 점포 추가 버튼으로 점포를 등록하세요</div>`
-    : '';
-  const resetBtn = stores.length > 0
-    ? `<button class="add-store-btn" style="color:#e57373;border-color:#e57373;margin-top:2px;" onclick="resetStores()" tabindex="0">🗑 점포 목록 초기화</button>`
-    : '';
-  document.getElementById('storeGrid').innerHTML =
-    empty + btns + `<button class="add-store-btn" onclick="openStoreModal()" tabindex="0">＋ 점포 추가</button>` + resetBtn;
 
-  // 키보드 이벤트 — Enter/Space로 선택, 좌우 화살표로 이동
+  const empty = stores.length === 0
+    ? `<div style="grid-column:1/-1;text-align:center;padding:10px 0 4px;font-size:0.78rem;color:var(--muted);">아래 버튼으로 점포를 추가하세요</div>`
+    : '';
+
+  const resetBtn = stores.length > 0
+    ? `<button class="add-store-btn" style="grid-column:1/-1;color:#e57373;border-color:#e57373;" onclick="resetStores()">🗑 점포 목록 초기화</button>`
+    : '';
+
+  document.getElementById('storeGrid').innerHTML =
+    empty + btns +
+    `<button class="add-store-btn" style="grid-column:1/-1;" onclick="openStoreModal()">＋ 점포 추가</button>` +
+    resetBtn;
+
+  // 키보드 이벤트
   document.querySelectorAll('.store-btn').forEach(btn => {
     btn.addEventListener('keydown', e => {
-      // store-btn에 포커스가 있을 때만 처리
       if(document.activeElement !== btn) return;
       const idx = parseInt(btn.dataset.idx);
       if(e.key === 'Enter' || e.key === ' ') {
