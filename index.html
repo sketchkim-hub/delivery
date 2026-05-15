@@ -1613,33 +1613,43 @@ async function calcOptimalRoute() {
   // 배송지 주소 → 좌표 변환 (원본 → 정제 순으로 시도)
   const results = await Promise.all(
     targets.map(async r => {
+      // 1차: 원본 주소
       const original = await geocodeAddr('대전광역시 ' + r.addr);
-      if(original) return original;
-      // 실패 시 주소 정제 후 재시도
-      return await geocodeAddr(cleanAddr(r.addr));
+      if(original) return { ...original, row: r };
+      // 2차: 동 이름만 추출
+      const dongOnly = r.addr.replace(/\s*(아파트|빌라|맨션|주공|한숲|휴먼시아|래미안|자이|푸르지오|e편한세상|롯데|현대|삼성|두산|대림|코오롱).*$/,'').trim();
+      const retry = await geocodeAddr('대전광역시 ' + dongOnly);
+      if(retry) return { ...retry, row: r };
+      // 3차: 구+동 이름만
+      const parts = r.addr.split(' ');
+      if(parts.length >= 2) {
+        const simple = await geocodeAddr('대전광역시 ' + parts[0] + ' ' + parts[1]);
+        if(simple) return { ...simple, row: r, approx: true };
+      }
+      return { failed: true, row: r };
     })
   );
 
-  const delivPoints = results.map((res, i) => res
-    ? { ...res, row: targets[i] }
-    : null
-  ).filter(Boolean);
-
-  const failed = targets.length - delivPoints.length;
+  const delivPoints = results.filter(r => !r.failed);
+  const failedList  = results.filter(r => r.failed);
+  const failed = failedList.length;
 
   if(!delivPoints.length) {
-    const failedAddrs = targets.map(r => r.addr).join('<br>');
-    routeList.innerHTML = `<div style="text-align:center;padding:20px;color:var(--accent);">
-      <div style="font-size:1.5rem;margin-bottom:8px;">❌</div>
-      <b>주소 변환 실패</b><br><br>
-      <small style="color:var(--muted);text-align:left;display:block;line-height:1.8;">
-      아래 주소를 도로명 주소로<br>바꿔보세요:<br><br>
-      <b>${failedAddrs}</b><br><br>
-      예) 동구 용전동<br>
-      → 동구 용전로 123
-      </small></div>`;
+    routeList.innerHTML = `<div style="padding:16px;color:var(--accent);">
+      <b>❌ 모든 주소 변환 실패</b><br><br>
+      <div style="font-size:0.82rem;color:var(--muted);line-height:2;">
+      ${failedList.map(f=>`• ${f.row.addr}`).join('<br>')}
+      </div><br>
+      <div style="font-size:0.78rem;color:var(--muted);">
+      💡 주소를 도로명으로 입력해보세요<br>
+      예) 동구 용전로 123
+      </div></div>`;
     return;
   }
+
+  // 일부 실패해도 성공한 것만으로 계산 진행
+  routeList.innerHTML = `<div style="text-align:center;padding:20px;color:var(--muted);">
+    <div style="font-size:1.2rem;">⚙️</div>최적 경로 계산 중...</div>`;
 
   // 출발지를 맨 앞에 추가하여 TSP 계산
   const allPoints = DEPART.lat
@@ -1724,17 +1734,138 @@ async function calcOptimalRoute() {
         <div class="route-num">${idx+1}</div>
         <div class="route-info">
           <div class="route-name">${r.store} · ${r.name}</div>
-          <div class="route-addr">📍 ${r.addr}</div>
+          <div class="route-addr">📍 ${r.addr}${p.approx?' <span style="color:orange;font-size:0.7rem;">(근사)</span>':''}</div>
           <div class="route-goods">📦 ${goodsText}</div>
         </div>
       </div>`;
-    }).join('');
+    }).join('') +
+    (failedList.length ? `<div style="margin-top:10px;padding:10px;background:#fff5f2;border-radius:8px;font-size:0.78rem;">
+      <b style="color:var(--accent);">⚠️ 주소 변환 실패 (${failedList.length}건)</b>
+      ${failedList.map(f=>`<div style="color:var(--muted);margin-top:4px;">• ${f.row.name}: ${f.row.addr}</div>`).join('')}
+      <div style="margin-top:6px;color:var(--muted);">💡 도로명 주소로 수정해 주세요</div>
+    </div>` : '');
+
+  // 최적 경로 전역 저장 (카카오맵 앱 연동용)
+  window._optimalRoute = { depart: DEPART, points: delivOnly };
+
+  // 액션 버튼 추가
+  const actionBar = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <button onclick="openKakaoMapApp()" style="padding:12px 8px;background:#FEE500;color:#3C1E1E;border:none;border-radius:9px;font-size:0.82rem;font-weight:900;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
+        <span style="font-size:1.1rem;">🗺️</span>카카오맵으로 열기
+      </button>
+      <button onclick="shareRoute()" style="padding:12px 8px;background:var(--ink2);color:#fff;border:none;border-radius:9px;font-size:0.82rem;font-weight:900;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
+        <span style="font-size:1.1rem;">📤</span>기사님께 공유
+      </button>
+    </div>`;
+
+  document.getElementById('routeList').innerHTML += actionBar;
 
   toast(`✅ ${delivOnly.length}건 최적 동선 계산 완료`,'ok');
   document.getElementById('mapPanel').classList.add('active');
 }
 
-function clearMapMarkers() {
+// ── 카카오맵 앱으로 열기 ──
+function openKakaoMapApp() {
+  const route = window._optimalRoute;
+  if(!route || !route.points.length) return toast('동선을 먼저 계산해 주세요','err');
+
+  const points = route.points;
+
+  // 카카오맵 길찾기 URL 스킴
+  // 출발지 → 경유지들 → 마지막 목적지
+  const origin = encodeURIComponent(route.depart.name);
+  const originLat = route.depart.lat;
+  const originLng = route.depart.lng;
+
+  // 경유지 최대 3개 (카카오맵 제한)
+  const waypoints = points.slice(0, -1).slice(0, 3);
+  const destination = points[points.length - 1];
+
+  // 카카오맵 앱 URL 스킴 (모바일)
+  const destName = encodeURIComponent(destination.row.name + ' ' + destination.row.addr);
+  const destLat  = destination.lat;
+  const destLng  = destination.lng;
+
+  let kakaoUrl = `kakaomap://route?sp=${originLat},${originLng}&ep=${destLat},${destLng}&by=CAR`;
+
+  // 경유지 추가 (최대 3개)
+  waypoints.forEach((wp, i) => {
+    kakaoUrl += `&via${i+1}=${wp.lat},${wp.lng}`;
+  });
+
+  // 앱이 없으면 웹으로 fallback
+  const webUrl = `https://map.kakao.com/link/to/${destName},${destLat},${destLng}`;
+
+  // 모바일: 앱 시도 → 실패시 웹
+  if(/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    window.location.href = kakaoUrl;
+    setTimeout(() => window.open(webUrl, '_blank'), 2000);
+  } else {
+    // PC: 웹 카카오맵으로
+    window.open(webUrl, '_blank');
+  }
+}
+
+// ── 기사님께 공유 ──
+function shareRoute() {
+  const route = window._optimalRoute;
+  if(!route || !route.points.length) return toast('동선을 먼저 계산해 주세요','err');
+
+  const date = document.getElementById('fDate').value;
+  const points = route.points;
+
+  // 공유 텍스트 생성
+  const lines = [
+    `🚐 ${date} 배송 동선 (${points.length}건)`,
+    `📍 출발: 문창전통시장`,
+    ``,
+    ...points.map((p, i) => {
+      const r = p.row;
+      const goods = [r, ...rows.filter(x => r.groupId && x.groupId === r.groupId && x !== r)]
+        .map(x => x.goods).join(', ');
+      return `${i+1}. ${r.name} (${r.addr})\n   📦 ${goods}${r.phone ? '\n   📞 '+r.phone : ''}`;
+    }),
+    ``,
+    `🗺️ 지도 보기: https://sketchkim-hub.github.io/delivery`
+  ];
+
+  const shareText = lines.join('\n');
+
+  // Web Share API (모바일 크롬 지원)
+  if(navigator.share) {
+    navigator.share({
+      title: `${date} 배송 동선`,
+      text: shareText
+    }).then(() => toast('✅ 공유 완료','ok'))
+      .catch(() => copyToClipboard(shareText));
+  } else {
+    // PC: 클립보드 복사
+    copyToClipboard(shareText);
+  }
+}
+
+function copyToClipboard(text) {
+  if(navigator.clipboard) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('📋 클립보드에 복사됨 — 카톡/문자에 붙여넣기 하세요','ok'))
+      .catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  toast('📋 클립보드에 복사됨 — 카톡/문자에 붙여넣기 하세요','ok');
+}
   if(window._kakaoMarkers) window._kakaoMarkers.forEach(m => m.setMap(null));
   window._kakaoMarkers = [];
   if(window._kakaoPolyline) window._kakaoPolyline.setMap(null);
