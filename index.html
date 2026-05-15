@@ -3,2006 +3,1046 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta http-equiv="X-Content-Type-Options" content="nosniff">
-<meta http-equiv="X-Frame-Options" content="DENY">
-<meta name="referrer" content="strict-origin-when-cross-origin">
-<title>배송 일일 보고서 | 전통시장</title>
+<title>배송 일일 보고서</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=443dbc1cfaf9df0e844d3e09c2fd2005&libraries=services"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
-
-:root {
-  --ink: #1a1a2e;
-  --ink2: #2d2d44;
-  --surface: #f5f3ef;
-  --card: #ffffff;
-  --accent: #d4460a;
-  --accent2: #e8650f;
-  --muted: #8a8a9a;
-  --border: #e2ddd8;
-  --row-even: #faf9f7;
-  --donggu: #3b82f6;
-  --junggu: #d4460a;
-  --seogu: #16a34a;
-  --daeduk: #9333ea;
-  --yuseong: #ca8a04;
-}
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'Noto Sans KR', sans-serif;
-  background: var(--surface);
-  color: var(--ink);
-  min-height: 100vh;
-  font-size: 14px;
+:root {
+  --ink: #1a1a2e; --ink2: #2d2d44;
+  --surface: #f5f3ef; --card: #fff;
+  --accent: #d4460a; --accent2: #e8650f;
+  --muted: #8a8a9a; --border: #e2ddd8;
+  --donggu: #3b82f6; --junggu: #d4460a;
+  --seogu: #16a34a; --daeduk: #9333ea; --yuseong: #ca8a04;
 }
+body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background: var(--surface); color: var(--ink); font-size: 14px; }
 
-.top-bar {
-  background: var(--ink);
-  color: #fff;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  height: 54px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-.top-bar .logo {
-  font-size: 1.05rem;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.top-bar .logo span { color: var(--accent2); }
-.top-bar .date-badge { margin-left: auto; font-size: 0.8rem; opacity: 0.6; }
-.top-bar .export-btn {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 7px 16px;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: background 0.15s, transform 0.1s;
-}
-.top-bar .export-btn:hover { background: var(--accent2); transform: translateY(-1px); }
+/* ── 헤더 ── */
+.hdr { background: var(--ink); color: #fff; height: 52px; display: flex; align-items: center; padding: 0 16px; gap: 10px; position: sticky; top: 0; z-index: 100; }
+.hdr-title { font-size: 1rem; font-weight: 800; }
+.hdr-title span { color: var(--accent2); }
+.hdr-date { margin-left: auto; font-size: 0.75rem; opacity: .6; }
+.hdr-btn { background: var(--accent); color: #fff; border: none; padding: 7px 13px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.hdr-btn.green { background: #16a34a; }
 
-.layout {
-  display: grid;
-  grid-template-columns: 360px 1fr;
-  height: calc(100vh - 54px);
-}
+/* ── 레이아웃 ── */
+.layout { display: grid; grid-template-columns: 300px 1fr 340px; height: calc(100vh - 52px); }
 
-/* 왼쪽 */
-.input-panel {
-  background: var(--card);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+/* ── 패널 공통 ── */
+.panel { overflow-y: auto; background: var(--card); }
+.panel-left { border-right: 1px solid var(--border); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.panel-right { border-left: 1px solid var(--border); display: flex; flex-direction: column; }
 
-.meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* ── 섹션 라벨 ── */
+.slabel { font-size: 0.68rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 5px; }
 
+/* ── 필드 ── */
 .field { display: flex; flex-direction: column; gap: 4px; }
-.field label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
+.field label { font-size: 0.68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .field input, .field select {
-  border: 1.5px solid var(--border);
-  border-radius: 7px;
-  padding: 9px 11px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  color: var(--ink);
-  background: var(--surface);
-  transition: border-color 0.15s, box-shadow 0.15s;
-  width: 100%;
+  border: 1.5px solid var(--border); border-radius: 7px; padding: 9px 10px;
+  font-size: 0.9rem; font-family: inherit; background: var(--surface); color: var(--ink);
+  width: 100%; transition: border-color .15s;
 }
-.field input:focus, .field select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(212,70,10,0.1);
-  background: #fff;
+.field input:focus, .field select:focus { outline: none; border-color: var(--accent); background: #fff; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.divider { height: 1px; background: var(--border); }
+
+/* ── 점포 ── */
+.store-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+.sbtn {
+  padding: 9px 6px; border: 1.5px solid var(--border); border-radius: 7px;
+  background: var(--surface); font-size: 0.78rem; font-weight: 700; font-family: inherit;
+  color: var(--ink2); cursor: pointer; text-align: center; position: relative;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: all .13s;
+}
+.sbtn:hover { border-color: var(--accent); color: var(--accent); background: #fff5f2; }
+.sbtn.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+.sbtn .x {
+  position: absolute; top: 2px; right: 3px; font-size: 0.6rem; color: rgba(255,255,255,.5);
+  background: none; border: none; cursor: pointer; padding: 1px 2px; line-height: 1;
+}
+.sbtn:not(.on) .x { color: rgba(0,0,0,.2); }
+.store-add-btn {
+  grid-column: 1/-1; padding: 8px; border: 1.5px dashed var(--border); border-radius: 7px;
+  background: transparent; font-size: 0.78rem; color: var(--muted); cursor: pointer;
+  font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: all .13s;
+}
+.store-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+.store-reset-btn {
+  grid-column: 1/-1; padding: 7px; border: 1.5px dashed #fca5a5; border-radius: 7px;
+  background: transparent; font-size: 0.75rem; color: #ef4444; cursor: pointer;
+  font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 
-.section-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 6px;
+/* ── 물품 태그 ── */
+.goods-tag {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 7px; padding: 7px 10px; font-size: 0.83rem; font-weight: 600;
+}
+.goods-tag .rm { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.85rem; padding: 0 3px; touch-action: manipulation; }
+.goods-tag .rm:hover { color: var(--accent); }
+.goods-add-row { display: flex; gap: 5px; }
+.goods-add-row input {
+  flex: 1; border: 1.5px solid var(--border); border-radius: 7px; padding: 8px 10px;
+  font-size: 0.88rem; font-family: inherit; background: var(--surface);
+}
+.goods-add-row input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.goods-add-row select {
+  border: 1.5px solid var(--border); border-radius: 7px; padding: 8px 6px;
+  font-size: 0.82rem; font-family: inherit; background: var(--surface); color: var(--ink);
+}
+.plus-btn {
+  padding: 8px 13px; background: var(--ink2); color: #fff; border: none;
+  border-radius: 7px; font-size: 0.85rem; font-weight: 700; font-family: inherit;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 
-.store-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.store-btn {
-  padding: 9px 6px;
-  border: 1.5px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface);
-  font-size: 0.8rem;
-  font-weight: 700;
-  font-family: inherit;
-  color: var(--ink2);
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.13s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  user-select: none;
-}
-.store-btn:hover { border-color: var(--accent); color: var(--accent); background: #fff5f2; }
-.store-btn:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(212,70,10,0.2); color: var(--accent); background: #fff5f2; }
-.store-btn:focus.active { box-shadow: 0 0 0 3px rgba(212,70,10,0.35); }
-.store-btn.active { border-color: var(--accent); background: var(--accent); color: #fff; }
-.add-store-btn {
-  grid-column: 1 / -1;
-  padding: 7px;
-  border: 1.5px dashed var(--border);
-  border-radius: 7px;
-  background: transparent;
-  font-size: 0.75rem;
-  color: var(--muted);
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.13s;
-}
-.add-store-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-.gu-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+/* ── 지역구 ── */
+.gu-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 5px; }
 .gu-btn {
-  padding: 8px 4px;
-  border-radius: 7px;
-  border: 1.5px solid var(--border);
-  background: var(--surface);
-  font-size: 0.75rem;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.13s;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  user-select: none;
-  position: relative;
-  z-index: 1;
+  padding: 10px 3px; border-radius: 7px; border: 1.5px solid var(--border);
+  background: var(--surface); font-size: 0.75rem; font-weight: 700; font-family: inherit;
+  cursor: pointer; text-align: center; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; transition: all .13s;
 }
 .gu-btn[data-gu="동구"]   { color: var(--donggu); }
 .gu-btn[data-gu="중구"]   { color: var(--junggu); }
 .gu-btn[data-gu="서구"]   { color: var(--seogu); }
 .gu-btn[data-gu="대덕구"] { color: var(--daeduk); }
 .gu-btn[data-gu="유성구"] { color: var(--yuseong); }
-.gu-btn.active[data-gu="동구"]   { background: var(--donggu); color: #fff; border-color: var(--donggu); }
-.gu-btn.active[data-gu="중구"]   { background: var(--junggu); color: #fff; border-color: var(--junggu); }
-.gu-btn.active[data-gu="서구"]   { background: var(--seogu);  color: #fff; border-color: var(--seogu); }
-.gu-btn.active[data-gu="대덕구"] { background: var(--daeduk); color: #fff; border-color: var(--daeduk); }
-.gu-btn.active[data-gu="유성구"] { background: var(--yuseong);color: #fff; border-color: var(--yuseong); }
-
-.addr-row { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: end; }
-.addr-gu-display {
-  padding: 9px 8px;
-  border-radius: 7px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  color: var(--muted);
-  text-align: center;
-  transition: all 0.15s;
+.gu-btn.on[data-gu="동구"]   { background: var(--donggu); color:#fff; border-color:var(--donggu); }
+.gu-btn.on[data-gu="중구"]   { background: var(--junggu); color:#fff; border-color:var(--junggu); }
+.gu-btn.on[data-gu="서구"]   { background: var(--seogu);  color:#fff; border-color:var(--seogu); }
+.gu-btn.on[data-gu="대덕구"] { background: var(--daeduk); color:#fff; border-color:var(--daeduk); }
+.gu-btn.on[data-gu="유성구"] { background: var(--yuseong);color:#fff; border-color:var(--yuseong); }
+.addr-row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; align-items: end; }
+.gu-disp {
+  padding: 9px 6px; border-radius: 7px; font-size: 0.82rem; font-weight: 700;
+  background: var(--surface); border: 1.5px solid var(--border); color: var(--muted); text-align: center;
+  transition: all .15s;
 }
 
-.item-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.item-btn {
-  padding: 8px 4px;
-  border: 1.5px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface);
-  font-size: 0.78rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: center;
-  color: var(--ink2);
-  transition: all 0.13s;
-}
-.item-btn:hover { border-color: var(--ink); background: var(--ink); color: #fff; }
-.item-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
-
+/* ── 배송시간 ── */
 .time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px; }
-.time-btn {
-  padding: 9px 6px;
-  border: 1.5px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface);
-  font-size: 0.76rem;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: center;
-  color: var(--ink2);
-  transition: all 0.13s;
-  line-height: 1.3;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  user-select: none;
+.tbtn {
+  padding: 10px 6px; border: 1.5px solid var(--border); border-radius: 7px;
+  background: var(--surface); font-size: 0.8rem; font-weight: 700; font-family: inherit;
+  cursor: pointer; text-align: center; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; transition: all .13s; position: relative;
 }
-.time-btn:hover { border-color: var(--ink2); background: var(--ink2); color: #fff; }
-.time-btn.active { background: var(--ink2); color: #fff; border-color: var(--ink2); }
+.tbtn:hover { border-color: var(--ink2); }
+.tbtn.on { background: var(--ink2); color: #fff; border-color: var(--ink2); }
+.tbtn .x { position: absolute; top:2px; right:3px; font-size:.6rem; color:rgba(0,0,0,.2); background:none; border:none; cursor:pointer; padding:1px 2px; }
+.tbtn.on .x { color:rgba(255,255,255,.5); }
+.time-add-row { display: grid; grid-template-columns: auto auto auto auto; gap: 5px; align-items: center; }
+.time-add-row select {
+  border: 1.5px solid var(--border); border-radius: 7px; padding: 8px 5px;
+  font-size: 0.82rem; font-family: inherit; background: var(--surface); color: var(--ink);
+}
 
+/* ── 추가 버튼 ── */
 .add-btn {
-  width: 100%;
-  padding: 13px;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 9px;
-  font-size: 1rem;
-  font-weight: 900;
-  font-family: inherit;
-  cursor: pointer;
-  letter-spacing: -0.02em;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 3px 12px rgba(212,70,10,0.25);
+  width: 100%; padding: 13px; background: var(--accent); color: #fff; border: none;
+  border-radius: 9px; font-size: 1rem; font-weight: 900; font-family: inherit;
+  cursor: pointer; box-shadow: 0 3px 12px rgba(212,70,10,.25);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: all .15s;
 }
 .add-btn:hover { background: var(--accent2); transform: translateY(-1px); }
-.add-btn:active { transform: translateY(0); }
 
-.divider { height: 1px; background: var(--border); flex-shrink: 0; }
+/* ── 가운데 목록 패널 ── */
+.sum-bar {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap;
+  background: var(--card);
+}
+.sum-total { font-size: 1.4rem; font-weight: 900; letter-spacing: -.04em; }
+.sum-total small { font-size: .72rem; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.gu-pill { font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:20px; }
+.gu-pill.동구   { background:#eff6ff; color:var(--donggu); }
+.gu-pill.중구   { background:#fff5f2; color:var(--junggu); }
+.gu-pill.서구   { background:#f0fdf4; color:var(--seogu); }
+.gu-pill.대덕구 { background:#faf5ff; color:var(--daeduk); }
+.gu-pill.유성구 { background:#fefce8; color:var(--yuseong); }
+.clear-btn { margin-left:auto; background:transparent; border:1px solid var(--border); color:var(--muted); padding:5px 10px; border-radius:6px; font-size:.72rem; font-family:inherit; cursor:pointer; }
+.clear-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+.tbl-wrap { flex:1; overflow:auto; }
+table { width:100%; border-collapse:collapse; font-size:.8rem; }
+thead { position:sticky; top:0; z-index:10; }
+thead th { background:var(--ink); color:rgba(255,255,255,.85); padding:8px 9px; text-align:center; font-size:.7rem; font-weight:700; white-space:nowrap; }
+tbody tr { border-bottom:1px solid var(--border); transition:background .1s; }
+tbody tr:nth-child(even) { background:#faf9f7; }
+tbody tr:hover { background:#fff5f2; }
+tbody td { padding:7px 9px; text-align:center; vertical-align:middle; }
+td.tc-store { font-weight:700; color:var(--accent); }
+td.tc-name  { font-weight:600; }
+td.tc-addr  { color:var(--muted); font-size:.75rem; }
+td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
+.gu-tag { display:inline-block; padding:2px 7px; border-radius:10px; font-size:.68rem; font-weight:700; }
+.gu-tag.동구   { background:#eff6ff; color:var(--donggu); }
+.gu-tag.중구   { background:#fff5f2; color:var(--junggu); }
+.gu-tag.서구   { background:#f0fdf4; color:var(--seogu); }
+.gu-tag.대덕구 { background:#faf5ff; color:var(--daeduk); }
+.gu-tag.유성구 { background:#fefce8; color:var(--yuseong); }
+.del-btn { background:none; border:none; cursor:pointer; color:var(--border); font-size:.88rem; padding:2px 4px; border-radius:4px; transition:all .1s; touch-action:manipulation; }
+.del-btn:hover { color:var(--accent); background:#fff5f2; }
+.print-btn { background:none; border:none; cursor:pointer; color:var(--muted); font-size:1rem; padding:2px 4px; border-radius:4px; transition:all .1s; touch-action:manipulation; }
+.print-btn:hover { color:var(--ink2); }
+.empty-state { text-align:center; padding:50px 20px; color:var(--muted); }
+.empty-state .ei { font-size:2.5rem; margin-bottom:8px; }
 
 /* ── 지도 패널 ── */
-.map-toolbar {
-  padding: 10px 14px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.panel-right .map-toolbar {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0; background: var(--card);
 }
-.btn-route {
-  margin-left: auto;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 7px 14px;
-  border-radius: 7px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn-route:hover { background: var(--accent2); }
-.btn-route-reset {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 7px 10px;
-  border-radius: 7px;
-  font-size: 0.82rem;
-  font-family: inherit;
-  cursor: pointer;
-}
-.route-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.82rem;
-}
-.route-num {
-  min-width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 900;
-  font-size: 0.78rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.route-info { flex: 1; line-height: 1.5; }
-.route-name { font-weight: 800; color: var(--ink); }
-.route-addr { color: var(--muted); font-size: 0.75rem; }
-.route-goods { font-size: 0.75rem; color: var(--ink2); }
+.route-btn { background:var(--accent); color:#fff; border:none; padding:7px 13px; border-radius:7px; font-size:.78rem; font-weight:700; font-family:inherit; cursor:pointer; margin-left:auto; }
+.route-btn:hover { background:var(--accent2); }
+.route-reset-btn { background:var(--surface); border:1px solid var(--border); color:var(--muted); padding:7px 9px; border-radius:7px; font-size:.78rem; font-family:inherit; cursor:pointer; }
+#kakaoMap { width:100%; height:45%; flex-shrink:0; }
+.route-list { flex:1; overflow-y:auto; padding:10px 14px; }
+.route-card { display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.8rem; }
+.route-num { min-width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; font-weight:900; font-size:.72rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.route-info { flex:1; line-height:1.5; }
+.route-name { font-weight:800; }
+.route-addr { color:var(--muted); font-size:.72rem; }
+.route-goods { font-size:.72rem; color:var(--ink2); }
+.action-btns { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+.kakao-btn { padding:11px 8px; background:#FEE500; color:#3C1E1E; border:none; border-radius:9px; font-size:.8rem; font-weight:900; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; }
+.share-btn { padding:11px 8px; background:var(--ink2); color:#fff; border:none; border-radius:9px; font-size:.8rem; font-weight:900; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; }
 
-/* ── 지도 패널 기본 (모바일 기준: 숨김) ── */
-.map-panel {
-  display: none;
-  flex-direction: column;
-  border-left: 1px solid var(--border);
-  background: var(--card);
-  overflow: hidden;
-}
-.map-panel.mob-active { display: flex !important; }
+/* ── 모달 ── */
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:500; align-items:center; justify-content:center; }
+.modal-bg.open { display:flex; }
+.modal { background:#fff; border-radius:14px; padding:22px; width:300px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+.modal h3 { font-size:.95rem; font-weight:800; margin-bottom:14px; }
+.modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+.btn-cancel { padding:8px 14px; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--ink); font-family:inherit; font-size:.83rem; font-weight:600; cursor:pointer; }
+.btn-ok { padding:8px 16px; border-radius:7px; border:none; background:var(--accent); color:#fff; font-family:inherit; font-size:.83rem; font-weight:700; cursor:pointer; }
 
-/* 모바일: 지도 패널 */
+/* ── 토스트 ── */
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--ink); color:#fff; padding:9px 20px; border-radius:30px; font-size:.82rem; font-weight:600; pointer-events:none; opacity:0; transition:opacity .2s,transform .2s; z-index:9999; white-space:nowrap; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast.ok  { background:#1a5c2a; }
+.toast.err { background:var(--accent); }
+
+/* ── 라벨 인쇄 ── */
+#printArea { display:none; }
+@media print {
+  body > *:not(#printArea) { display:none !important; }
+  #printArea { display:block !important; margin:0; padding:0; }
+  @page { size:150mm 100mm; margin:2mm; }
+  .label-card { width:146mm; height:96mm; box-sizing:border-box; font-family:'Malgun Gothic',sans-serif; }
+  .label-card table { width:100%; height:96mm; border-collapse:collapse; }
+  .label-card td { border:3px solid #000; padding:2mm 3mm; vertical-align:middle; }
+  .lbl-h { font-weight:900; text-align:center; width:18mm; white-space:pre-line; background:#e8e8e8; font-size:14pt; line-height:1.3; }
+  .lbl-v { font-size:16pt; }
+  .lbl-big { font-size:22pt; font-weight:900; }
+  .lbl-addr { font-size:17pt; font-weight:700; }
+  .lbl-goods { font-size:16pt; white-space:pre-line; vertical-align:top; }
+}
+
+/* ── 모바일 탭바 ── */
+.mob-tab-bar { display:none; position:fixed; bottom:0; left:0; right:0; background:var(--ink); z-index:400; height:56px; }
+.mob-tab-bar .tabs { display:grid; grid-template-columns:1fr 1fr 1fr; height:100%; }
+.mob-tab { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:rgba(255,255,255,.5); font-size:.62rem; font-weight:700; border:none; background:none; cursor:pointer; font-family:inherit; touch-action:manipulation; }
+.mob-tab .ti { font-size:1.2rem; line-height:1; }
+.mob-tab.on { color:var(--accent2); }
+.mob-badge { background:var(--accent); color:#fff; font-size:.58rem; font-weight:900; padding:1px 5px; border-radius:10px; }
+
+/* ── 모바일 반응형 ── */
 @media (max-width: 768px) {
-  .layout { grid-template-columns: 1fr; }
-  .map-panel {
-    border-left: none;
-    border-top: 1px solid var(--border);
-    height: calc(100vh - 106px);
+  .layout { grid-template-columns:1fr; height:auto; }
+  .hdr-date { display:none; }
+  .panel-left, .panel-mid, .panel-right {
+    display:none;
+    position:fixed; top:52px; left:0; right:0; bottom:56px;
+    overflow-y:scroll; -webkit-overflow-scrolling:touch;
+    background:var(--card); z-index:10;
   }
-  #kakaoMap {
-    width: 100% !important;
-    height: 50vh !important;
-    min-height: 240px !important;
-  }
+  .panel-left  { padding:14px; flex-direction:column; gap:12px; }
+  .panel-left.on, .panel-mid.on, .panel-right.on { display:flex; }
+  .panel-mid { flex-direction:column; }
+  .panel-right { flex-direction:column; }
+  .mob-tab-bar { display:block; }
+  #kakaoMap { height:45vh !important; flex-shrink:0; }
+  .row2 { grid-template-columns:1fr; }
+  .field input, .field select { padding:11px 12px; font-size:1rem; }
+  .gu-btn { padding:12px 3px; font-size:.82rem; }
+  .tbtn { padding:12px 6px; font-size:.85rem; }
+  .add-btn { padding:15px; font-size:1rem; }
 }
-
-/* PC: 3단 레이아웃 - 지도 항상 표시 */
 @media (min-width: 769px) {
-  .layout { grid-template-columns: 320px 1fr 360px; }
-  .map-panel { display: flex !important; }
-  .table-panel { display: flex !important; }
-  .input-panel { display: flex !important; }
+  .panel-left, .panel-mid, .panel-right { display:flex !important; }
 }
-.mob-tab-bar {
-  display: none;
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  background: var(--ink);
-  z-index: 300;
-  height: 56px;
-  pointer-events: auto;
-}
-.mob-tab-bar .tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  height: 100%;
-}
-.mob-tab-bar .tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  color: rgba(255,255,255,0.5);
-  font-size: 0.65rem;
-  font-weight: 700;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-family: inherit;
-  transition: color 0.15s;
-}
-.mob-tab-bar .tab .tab-icon { font-size: 1.3rem; line-height: 1; }
-.mob-tab-bar .tab.active { color: var(--accent2); }
-.mob-tab-bar .tab .badge {
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.6rem;
-  font-weight: 900;
-  padding: 1px 5px;
-  border-radius: 10px;
-  min-width: 18px;
-  text-align: center;
-}
-
-/* ── 반응형 미디어쿼리 ── */
-@media (max-width: 768px) {
-  body { font-size: 15px; }
-
-  .top-bar { padding: 0 14px; height: 50px; }
-  .top-bar .logo { font-size: 0.95rem; }
-  .top-bar .date-badge { display: none; }
-  .top-bar .export-btn { padding: 6px 12px; font-size: 0.78rem; }
-
-  .layout {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-
-  /* 패널 전환 */
-  .input-panel {
-    display: none;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 14px;
-    padding-bottom: 80px;
-    overflow-y: scroll;
-    -webkit-overflow-scrolling: touch;
-    height: calc(100vh - 50px);
-    box-sizing: border-box;
-  }
-  .input-panel.mob-active { display: flex; }
-
-  .table-panel {
-    display: none;
-    padding-bottom: 70px;
-    overflow: auto;
-    height: calc(100vh - 50px);
-    box-sizing: border-box;
-  }
-  .table-panel.mob-active { display: flex; }
-
-  /* 탭바 표시 */
-  .mob-tab-bar { display: block; }
-
-  /* 입력 폼 터치 최적화 */
-  .field input, .field select,
-  .field input[type=date], .field input[type=tel],
-  .field input[type=number] {
-    padding: 11px 12px;
-    font-size: 1rem;
-  }
-  .meta-row { grid-template-columns: 1fr; }
-
-  /* 점포 버튼 */
-  .store-grid { grid-template-columns: repeat(2, 1fr); }
-  .store-btn { padding: 12px 8px; font-size: 0.9rem; }
-
-  /* 지역구 버튼 */
-  .gu-btn { padding: 14px 4px; font-size: 0.9rem; }
-
-  /* 품목 버튼 */
-  .item-btn { padding: 14px 4px; font-size: 0.9rem; }
-
-  /* 배송시간 버튼 */
-  .time-btn { padding: 14px 6px; font-size: 0.9rem; }
-
-  /* 추가 버튼 */
-  .add-btn { padding: 15px; font-size: 1.05rem; }
-
-  /* 테이블 → 카드 리스트로 변환 */
-  .table-wrap table { display: none; }
-  .mob-card-list { display: block !important; }
-
-  /* 요약 바 */
-  .summary-bar { padding: 10px 14px; gap: 10px; }
-  .summary-bar .total { font-size: 1.2rem; }
-
-  /* 모달 */
-  .modal { width: 92vw; max-width: 420px; padding: 20px; }
-}
-
-@media (min-width: 769px) {
-  /* PC: 기존 레이아웃 유지 */
-  .input-panel { display: flex !important; }
-  .table-panel { display: flex !important; }
-  .mob-tab-bar { display: none !important; }
-  .mob-card-list { display: none !important; }
-}
-
-/* ── 모바일 카드 리스트 ── */
-.mob-card-list {
-  display: none;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.mob-card {
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  padding: 12px 14px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-.mob-card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.mob-card-seq { font-size: 0.72rem; color: var(--muted); font-weight: 700; min-width: 20px; }
-.mob-card-time {
-  font-size: 0.75rem;
-  font-weight: 800;
-  background: var(--ink2);
-  color: #fff;
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-.mob-card-store { font-size: 0.85rem; font-weight: 900; color: var(--accent); }
-.mob-card-actions { margin-left: auto; display: flex; gap: 5px; }
-.mob-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 0.82rem; }
-.mob-card-body .row { display: flex; flex-direction: column; }
-.mob-card-body .lbl { font-size: 0.68rem; color: var(--muted); font-weight: 700; }
-.mob-card-body .val { font-weight: 600; color: var(--ink); }
-.mob-card-goods { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 0.82rem; }
-.mob-card-goods .lbl { font-size: 0.68rem; color: var(--muted); font-weight: 700; margin-bottom: 3px; }
-.mob-card-goods .val { font-weight: 700; color: var(--ink); }
-.mob-group-line {
-  border-left: 3px solid var(--accent);
-  padding-left: 8px;
-  margin-left: 4px;
-}
-
-/* 오른쪽 */
-.table-panel { overflow: auto; display: flex; flex-direction: column; }
-
-.summary-bar {
-  padding: 10px 18px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-.summary-bar .total { font-size: 1.4rem; font-weight: 900; letter-spacing: -0.04em; }
-.summary-bar .total small { font-size: 0.75rem; font-weight: 500; color: var(--muted); margin-left: 3px; }
-.gu-count { display: flex; gap: 6px; flex-wrap: wrap; }
-.gu-pill {
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 20px;
-}
-.gu-pill.donggu   { background: #eff6ff; color: var(--donggu); }
-.gu-pill.junggu   { background: #fff5f2; color: var(--junggu); }
-.gu-pill.seogu    { background: #f0fdf4; color: var(--seogu); }
-.gu-pill.daeduk   { background: #faf5ff; color: var(--daeduk); }
-.gu-pill.yuseong  { background: #fefce8; color: var(--yuseong); }
-.clear-btn {
-  margin-left: auto;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.13s;
-}
-.clear-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-.table-wrap { flex: 1; overflow: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-thead { position: sticky; top: 0; z-index: 10; }
-thead th {
-  background: var(--ink);
-  color: rgba(255,255,255,0.85);
-  padding: 9px 10px;
-  text-align: center;
-  font-weight: 700;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
-tbody tr:nth-child(even) { background: var(--row-even); }
-tbody tr:hover { background: #fff5f2; }
-tbody td { padding: 8px 10px; text-align: center; vertical-align: middle; }
-tbody td.store-cell { font-weight: 700; color: var(--accent); }
-tbody td.name-cell { font-weight: 600; }
-tbody td.addr-cell { color: var(--muted); font-size: 0.78rem; }
-
-.gu-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  font-weight: 700;
-}
-.gu-tag.동구   { background: #eff6ff; color: var(--donggu); }
-.gu-tag.중구   { background: #fff5f2; color: var(--junggu); }
-.gu-tag.서구   { background: #f0fdf4; color: var(--seogu); }
-.gu-tag.대덕구 { background: #faf5ff; color: var(--daeduk); }
-.gu-tag.유성구 { background: #fefce8; color: var(--yuseong); }
-
-.del-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--border);
-  font-size: 0.9rem;
-  padding: 2px 5px;
-  border-radius: 4px;
-  transition: all 0.1s;
-}
-.del-btn:hover { color: var(--accent); background: #fff5f2; }
-.goods-tag {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 7px;
-  padding: 7px 10px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--ink2);
-}
-.goods-tag .gtag-del {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--border);
-  font-size: 0.85rem;
-  padding: 0 3px;
-  border-radius: 3px;
-  transition: color 0.1s;
-  line-height: 1;
-}
-.goods-tag .gtag-del:hover { color: var(--accent); }
-
-.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
-.empty-state .icon { font-size: 3rem; margin-bottom: 10px; }
-
-/* 모달 */
-.modal-bg {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 500;
-  align-items: center;
-  justify-content: center;
-}
-.modal-bg.open { display: flex; }
-.modal {
-  background: #fff;
-  border-radius: 14px;
-  padding: 24px;
-  width: 300px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-}
-.modal h3 { font-size: 1rem; font-weight: 800; margin-bottom: 16px; }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
-.btn-cancel { padding: 8px 16px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-family: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
-.btn-ok { padding: 8px 18px; border-radius: 7px; border: none; background: var(--accent); color: #fff; font-family: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
-
-/* 토스트 */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%) translateY(10px);
-  background: var(--ink);
-  color: #fff;
-  padding: 10px 22px;
-  border-radius: 30px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s, transform 0.2s;
-  z-index: 9999;
-  white-space: nowrap;
-}
-.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.toast.ok  { background: #1a5c2a; }
-.toast.err { background: var(--accent); }
 </style>
 </head>
 <body>
 
-<div class="top-bar">
-  <div class="logo">🚐 <span>배송</span>일일보고서</div>
-  <div class="date-badge" id="headerDate"></div>
-  <button class="export-btn" style="background:#16a34a;" onclick="calcOptimalRoute()">🗺️ 동선 계산</button>
-  <button class="export-btn" onclick="exportExcel()">📥 엑셀 다운로드</button>
+<!-- ── 헤더 ── -->
+<div class="hdr">
+  <span>🚐</span>
+  <div class="hdr-title">배송 <span>일일보고서</span></div>
+  <div class="hdr-date" id="hdrDate"></div>
+  <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선 계산</button>
+  <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
 </div>
 
 <div class="layout">
 
-  <!-- 왼쪽 입력 -->
-  <div class="input-panel mob-active" id="inputPanel">
+<!-- ── 왼쪽: 입력 패널 ── -->
+<div class="panel panel-left" id="pLeft">
 
-    <div class="meta-row">
-      <div class="field">
-        <label>날짜</label>
-        <input type="date" id="fDate">
-      </div>
-      <div class="field">
-        <label>순번 (자동)</label>
-        <input type="number" id="fSeq" placeholder="자동" readonly style="background:#f0ede8; color:var(--muted);">
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- 점포 -->
-    <div>
-      <div class="section-label">점포</div>
-      <div class="store-grid" id="storeGrid"></div>
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- 고객명 + 연락처 -->
-    <div class="meta-row">
-      <div class="field">
-        <label>고객명</label>
-        <input type="text" id="fName" placeholder="고객 이름" autocomplete="off">
-      </div>
-      <div class="field">
-        <label>연락처 (휴대폰)</label>
-        <input type="tel" id="fPhone" placeholder="010-0000-0000" autocomplete="off">
-      </div>
-    </div>
-
-    <!-- 물품 목록 -->
-    <div>
-      <div class="section-label">물품 <span id="goodsCount" style="color:var(--accent);font-size:0.8rem;text-transform:none;letter-spacing:0;"></span></div>
-      <div id="goodsList" style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px;"></div>
-      <!-- 물품명 + 품목 선택 + 추가 버튼 -->
-      <div style="display:flex;gap:5px;align-items:stretch;">
-        <input type="text" id="fGoodsInput" placeholder="물품명" autocomplete="off"
-          style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-size:0.88rem;font-family:inherit;background:var(--surface);"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();addGoods();}">
-        <select id="fGoodsItem" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 6px;font-size:0.82rem;font-family:inherit;background:var(--surface);color:var(--ink);cursor:pointer;min-width:0;">
-          <option value="">품목</option>
-          <option value="농산물">농산물</option>
-          <option value="수산물">수산물</option>
-          <option value="축산물">축산물</option>
-          <option value="가공식품">가공식품</option>
-          <option value="생활">생활</option>
-          <option value="의류">의류</option>
-          <option value="기타">기타</option>
-        </select>
-        <button onclick="addGoods()" style="padding:8px 12px;background:var(--ink2);color:#fff;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">＋</button>
-      </div>
-    </div>
-
-    <!-- 전체 금액 -->
-    <div class="field">
-      <label>전체 금액 — 물품 전체 합산</label>
-      <input type="number" id="fAmt" placeholder="0" min="0" step="1">
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- 지역구 -->
-    <div>
-      <div class="section-label">지역구</div>
-      <div class="gu-grid">
-        <button class="gu-btn" data-gu="동구"   onclick="selectGu(this)">동구</button>
-        <button class="gu-btn" data-gu="중구"   onclick="selectGu(this)">중구</button>
-        <button class="gu-btn" data-gu="서구"   onclick="selectGu(this)">서구</button>
-        <button class="gu-btn" data-gu="대덕구" onclick="selectGu(this)">대덕구</button>
-        <button class="gu-btn" data-gu="유성구" onclick="selectGu(this)">유성구</button>
-      </div>
-    </div>
-
-    <!-- 주소: 구(자동) + 동 -->
-    <div class="field">
-      <label>주소 — 동 이름 입력</label>
-      <div class="addr-row">
-        <div class="addr-gu-display" id="addrGuDisp">구 선택</div>
-        <input type="text" id="fDong" placeholder="예: 부사동" autocomplete="off">
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- 상자 -->
-    <div class="field">
-      <label>상자 수</label>
-      <input type="number" id="fBox" placeholder="0" min="0">
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- 배송 시간 -->
-    <div>
-      <div class="section-label">배송 시간</div>
-      <!-- 등록된 시간 버튼 목록 -->
-      <div id="timeGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;"></div>
-      <!-- 시간 직접 추가 -->
-      <div style="display:grid;grid-template-columns:auto auto auto auto;gap:5px;align-items:center;">
-        <select id="timeAmPm" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 6px;font-size:0.85rem;font-family:inherit;background:var(--surface);color:var(--ink);">
-          <option value="오전">오전</option>
-          <option value="오후">오후</option>
-        </select>
-        <select id="timeHour" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 6px;font-size:0.85rem;font-family:inherit;background:var(--surface);color:var(--ink);">
-          <option value="">시</option>
-          <option value="0">0시</option>
-          <option value="1">1시</option>
-          <option value="2">2시</option>
-          <option value="3">3시</option>
-          <option value="4">4시</option>
-          <option value="5">5시</option>
-          <option value="6">6시</option>
-          <option value="7">7시</option>
-          <option value="8">8시</option>
-          <option value="9">9시</option>
-          <option value="10">10시</option>
-          <option value="11">11시</option>
-          <option value="12">12시</option>
-        </select>
-        <select id="timeMin" style="border:1.5px solid var(--border);border-radius:7px;padding:8px 6px;font-size:0.85rem;font-family:inherit;background:var(--surface);color:var(--ink);">
-          <option value="00">00분</option>
-          <option value="10">10분</option>
-          <option value="20">20분</option>
-          <option value="30">30분</option>
-          <option value="40">40분</option>
-          <option value="50">50분</option>
-        </select>
-        <button onclick="addTimeSlot()" style="padding:8px 12px;background:var(--ink2);color:#fff;border:none;border-radius:7px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;">＋</button>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <button class="add-btn" onclick="addRow()">＋ 목록에 추가</button>
+  <!-- 날짜/순번 -->
+  <div class="row2">
+    <div class="field"><label>날짜</label><input type="date" id="fDate"></div>
+    <div class="field"><label>순번(자동)</label><input type="text" id="fSeq" readonly style="background:#f0ede8;color:var(--muted);" placeholder="자동"></div>
   </div>
 
-  <!-- 오른쪽 테이블 -->
-  <div class="table-panel mob-active" id="tablePanel">
-    <div class="summary-bar">
-      <div class="total"><span id="sumCount">0</span><small>건</small></div>
-      <div class="gu-count" id="guCounts"></div>
-      <button class="clear-btn" onclick="clearAll()">전체 삭제</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>순번</th><th>날짜</th><th>배송시간</th><th>점포</th><th>고객명</th>
-            <th>물품</th><th>금액</th><th>주소</th>
-            <th>품목</th><th>상자</th><th>지역구</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-      <!-- 모바일 카드 리스트 -->
-      <div class="mob-card-list" id="mobCardList"></div>
+  <div class="divider"></div>
+
+  <!-- 점포 -->
+  <div>
+    <div class="slabel">점포</div>
+    <div class="store-grid" id="storeGrid"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 고객명/연락처 -->
+  <div class="row2">
+    <div class="field"><label>고객명</label><input type="text" id="fName" placeholder="고객 이름" autocomplete="off"></div>
+    <div class="field"><label>연락처</label><input type="tel" id="fPhone" placeholder="010-0000-0000" autocomplete="off"></div>
+  </div>
+
+  <!-- 물품 -->
+  <div>
+    <div class="slabel">물품 <span id="gCount" style="color:var(--accent);text-transform:none;letter-spacing:0;font-size:.8rem;"></span></div>
+    <div id="gList" style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px;"></div>
+    <div class="goods-add-row">
+      <input type="text" id="fGoods" placeholder="물품명" autocomplete="off"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addGoods();}">
+      <select id="fItem">
+        <option value="">품목</option>
+        <option>농산물</option><option>수산물</option><option>축산물</option>
+        <option>가공식품</option><option>생활</option><option>의류</option><option>기타</option>
+      </select>
+      <button class="plus-btn" onclick="addGoods()">＋</button>
     </div>
   </div>
 
-  <!-- 지도/동선 패널 -->
-  <div class="map-panel" id="mapPanel">
-    <div class="map-toolbar">
-      <span style="font-weight:800;font-size:0.95rem;">🗺️ 최적 배송 동선</span>
-      <button class="btn-route" onclick="calcOptimalRoute()">🚗 동선 계산</button>
-      <button class="btn-route-reset" onclick="resetRoute()">↺ 초기화</button>
+  <!-- 금액 -->
+  <div class="field"><label>전체 금액 (원)</label><input type="number" id="fAmt" placeholder="0" min="0" step="1"></div>
+
+  <div class="divider"></div>
+
+  <!-- 지역구 -->
+  <div>
+    <div class="slabel">지역구</div>
+    <div class="gu-grid">
+      <button class="gu-btn" data-gu="동구"   onclick="selGu(this)">동구</button>
+      <button class="gu-btn" data-gu="중구"   onclick="selGu(this)">중구</button>
+      <button class="gu-btn" data-gu="서구"   onclick="selGu(this)">서구</button>
+      <button class="gu-btn" data-gu="대덕구" onclick="selGu(this)">대덕구</button>
+      <button class="gu-btn" data-gu="유성구" onclick="selGu(this)">유성구</button>
     </div>
-    <!-- 지도 영역 -->
-    <div id="kakaoMap" style="width:100%;height:55%;min-height:260px;"></div>
-    <!-- 최적 순서 목록 -->
-    <div id="routeList" style="flex:1;overflow-y:auto;padding:10px 14px;">
-      <div style="text-align:center;padding:30px 0;color:var(--muted);font-size:0.85rem;">
-        <div style="font-size:2rem;margin-bottom:8px;">🚗</div>
-        목록에 주소를 입력하고<br>동선 계산 버튼을 눌러주세요
-      </div>
+  </div>
+
+  <!-- 주소 -->
+  <div class="field">
+    <label>주소 (동 입력)</label>
+    <div class="addr-row">
+      <div class="gu-disp" id="guDisp">구 선택</div>
+      <input type="text" id="fDong" placeholder="예: 부사동" autocomplete="off">
     </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 상자 -->
+  <div class="field"><label>상자 수</label><input type="number" id="fBox" placeholder="0" min="0"></div>
+
+  <div class="divider"></div>
+
+  <!-- 배송시간 -->
+  <div>
+    <div class="slabel">배송 시간</div>
+    <div class="time-grid" id="tGrid"></div>
+    <div class="time-add-row">
+      <select id="tAmpm"><option value="오전">오전</option><option value="오후">오후</option></select>
+      <select id="tHour">
+        <option value="">시</option>
+        <option>0</option><option>1</option><option>2</option><option>3</option>
+        <option>4</option><option>5</option><option>6</option><option>7</option>
+        <option>8</option><option>9</option><option>10</option><option>11</option><option>12</option>
+      </select>
+      <select id="tMin">
+        <option value="00">00분</option><option value="10">10분</option>
+        <option value="20">20분</option><option value="30">30분</option>
+        <option value="40">40분</option><option value="50">50분</option>
+      </select>
+      <button class="plus-btn" onclick="addTime()">＋</button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <button class="add-btn" onclick="addRow()">＋ 목록에 추가</button>
+</div><!-- /panel-left -->
+
+<!-- ── 가운데: 목록 패널 ── -->
+<div class="panel panel-mid" id="pMid" style="flex-direction:column;">
+  <div class="sum-bar">
+    <div class="sum-total"><span id="sumN">0</span><small>건</small></div>
+    <div id="guPills" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+    <button class="clear-btn" onclick="clearAll()">전체 삭제</button>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>순번</th><th>날짜</th><th>배송시간</th><th>점포</th><th>고객명</th>
+        <th>물품</th><th>주소</th><th>금액</th><th>품목</th><th>상자</th><th>지역구</th><th></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
   </div>
 </div>
 
-<!-- 모바일 하단 탭 바 -->
+<!-- ── 오른쪽: 지도 패널 ── -->
+<div class="panel panel-right" id="pRight">
+  <div class="map-toolbar">
+    <span style="font-weight:800;font-size:.9rem;">🗺️ 최적 배송 동선</span>
+    <button class="route-btn" onclick="calcRoute()">🚗 동선 계산</button>
+    <button class="route-reset-btn" onclick="resetRoute()">↺</button>
+  </div>
+  <div id="kakaoMap"></div>
+  <div class="route-list" id="routeList">
+    <div class="empty-state"><div class="ei">🚗</div><p style="font-size:.85rem;">동선 계산 버튼을 눌러주세요</p></div>
+  </div>
+</div>
+
+</div><!-- /layout -->
+
+<!-- 모바일 탭바 -->
 <div class="mob-tab-bar">
-  <div class="tabs" style="grid-template-columns:1fr 1fr 1fr;">
-    <button class="tab active" id="tabInput" onclick="switchTab('input')">
-      <span class="tab-icon">✏️</span>입력
-    </button>
-    <button class="tab" id="tabList" onclick="switchTab('list')">
-      <span class="tab-icon">📋</span>목록
-      <span class="badge" id="mobBadge" style="display:none;">0</span>
-    </button>
-    <button class="tab" id="tabMap" onclick="switchTab('map'); if(rows.length) setTimeout(calcOptimalRoute, 300);">
-      <span class="tab-icon">🗺️</span>동선
-    </button>
+  <div class="tabs">
+    <button class="mob-tab on" id="t0" onclick="mobTab(0)"><span class="ti">✏️</span>입력</button>
+    <button class="mob-tab" id="t1" onclick="mobTab(1)"><span class="ti">📋</span>목록<span class="mob-badge" id="mBadge" style="display:none;">0</span></button>
+    <button class="mob-tab" id="t2" onclick="mobTab(2)"><span class="ti">🗺️</span>동선</button>
+  </div>
+</div>
+
+<!-- 점포 추가 모달 -->
+<div class="modal-bg" id="storeModal">
+  <div class="modal">
+    <h3>🏪 점포 추가</h3>
+    <div class="field" style="margin-bottom:12px;"><label>점포명</label><input type="text" id="mStoreName" placeholder="점포 이름"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeStoreModal()">취소</button>
+      <button class="btn-ok" onclick="doAddStore()">추가</button>
+    </div>
   </div>
 </div>
 
 <!-- 라벨 인쇄 모달 -->
 <div class="modal-bg" id="labelModal">
-  <div class="modal" style="width:420px;">
-    <h3>🖨 라벨 인쇄</h3>
-    <div id="labelPreview" style="border:1px solid var(--border);border-radius:8px;padding:0;background:#fff;overflow:hidden;aspect-ratio:15/10;width:100%;margin-bottom:16px;"></div>
+  <div class="modal" style="width:400px;">
+    <h3>🖨 라벨 미리보기</h3>
+    <div id="labelPreview" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;aspect-ratio:15/10;margin-bottom:14px;background:#fff;"></div>
     <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeLabelModal()">닫기</button>
+      <button class="btn-cancel" onclick="document.getElementById('labelModal').classList.remove('open')">닫기</button>
       <button class="btn-ok" onclick="doPrint()">🖨 인쇄</button>
     </div>
   </div>
 </div>
 
-<!-- 인쇄 전용 숨김 영역 -->
-<div id="printArea" style="display:none;"></div>
-
-<style>
-@media print {
-  body > *:not(#printArea) { display: none !important; }
-  #printArea { display: block !important; margin: 0; padding: 0; }
-  @page { size: 150mm 100mm; margin: 2mm; }
-  .label-card {
-    width: 146mm;
-    height: 96mm;
-    box-sizing: border-box;
-    font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
-  }
-  .label-card table { width: 100%; height: 96mm; border-collapse: collapse; }
-  .label-card td { border: 3px solid #000; padding: 2mm 3mm; vertical-align: middle; }
-  .label-card .lbl {
-    font-weight: 900;
-    text-align: center;
-    width: 18mm;
-    white-space: pre-line;
-    background: #e8e8e8;
-    font-size: 14pt;
-    line-height: 1.3;
-  }
-  .label-card .val       { font-size: 16pt; }
-  .label-card .val.big   { font-size: 22pt; font-weight: 900; }
-  .label-card .val.addr  { font-size: 17pt; font-weight: 700; }
-  .label-card .val.goods { font-size: 16pt; white-space: pre-line; vertical-align: top; }
-}
-</style>
-<div class="modal-bg" id="storeModal">
-  <div class="modal">
-    <h3>🏪 점포 추가</h3>
-    <div class="field">
-      <label>점포명</label>
-      <input type="text" id="newStoreName" placeholder="점포 이름">
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeStoreModal()">취소</button>
-      <button class="btn-ok" onclick="confirmAddStore()">추가</button>
-    </div>
-  </div>
-</div>
-
+<div id="printArea"></div>
 <div class="toast" id="toast"></div>
 
 <script>
-// ── 데이터 ──
-const GU_CLASS = {동구:'donggu',중구:'junggu',서구:'seogu',대덕구:'daeduk',유성구:'yuseong'};
-let TIMES = JSON.parse(localStorage.getItem('ds_times') || '["오전 9:10","오후 1:10"]');
+// ════════════════════════════════════
+//  상수 & 초기 데이터
+// ════════════════════════════════════
+const ITEMS = ['농산물','수산물','축산물','가공식품','생활','의류','기타'];
+const GU_COLOR = {동구:'#3b82f6',중구:'#d4460a',서구:'#16a34a',대덕구:'#9333ea',유성구:'#ca8a04'};
+const DEPART = { name:'문창전통시장', addr:'대전광역시 중구 보문로20번길 22', lat:null, lng:null };
 
-const FIXED_ITEMS = ['농산물','수산물','축산물','가공식품','생활','의류','기타'];
-let stores = JSON.parse(localStorage.getItem('ds_stores') || '[]');
-let items  = FIXED_ITEMS; // 항상 최신 목록 사용
+let stores  = JSON.parse(localStorage.getItem('ds2_stores') || '[]');
+let times   = JSON.parse(localStorage.getItem('ds2_times')  || '["오전 9:10","오후 1:10"]');
+let rows    = [];
+let goodsList = [];
+let selStore = null, selGuVal = null, selTime = null;
 
 function todayKey() { return new Date().toISOString().slice(0,10); }
-let rows = JSON.parse(localStorage.getItem('ds_rows_' + todayKey()) || '[]');
+function saveRows() { localStorage.setItem('ds2_rows_'+todayKey(), JSON.stringify(rows)); }
+function saveStores() { localStorage.setItem('ds2_stores', JSON.stringify(stores)); }
+function saveTimes() { localStorage.setItem('ds2_times', JSON.stringify(times)); }
 
-let selStore=null, selGu=null, selTime=null;
-let goodsList = []; // [{name, item}] 구조
-
-// ── 물품 다중 입력 ──
-function addGoods() {
-  const inp  = document.getElementById('fGoodsInput');
-  const sel  = document.getElementById('fGoodsItem');
-  const name = inp.value.trim();
-  if(!name) return;
-  const item = sel.value || '-';
-  goodsList.push({ name, item });
-  inp.value = '';
-  sel.value = '';
-  inp.focus();
-  renderGoodsList();
-}
-function removeGoods(i) {
-  goodsList.splice(i, 1);
-  renderGoodsList();
-}
-function renderGoodsList() {
-  const el  = document.getElementById('goodsList');
-  const cnt = document.getElementById('goodsCount');
-  cnt.textContent = goodsList.length ? `(${goodsList.length}개)` : '';
-  el.innerHTML = goodsList.map((g, i) => `
-    <div class="goods-tag">
-      <span>📦 ${g.name}${g.item && g.item!=='-' ? ` <span style="font-size:0.72rem;background:var(--ink2);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px;">${g.item}</span>` : ''}</span>
-      <button class="gtag-del" onclick="removeGoods(${i})">✕</button>
-    </div>`).join('');
-}
-function renderItems() {
-  // 물품 추가 드롭다운 옵션 채우기
-  const sel = document.getElementById('fGoodsItem');
-  if(!sel) return;
-  sel.innerHTML = `<option value="">품목</option>` +
-    items.map(it => `<option value="${it}">${it}</option>`).join('');
-}
-
-// ── 초기화 ──
-window.onload = () => {
+// ════════════════════════════════════
+//  초기화
+// ════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
   const d = new Date();
   document.getElementById('fDate').value = d.toISOString().slice(0,10);
-  document.getElementById('headerDate').textContent =
+  document.getElementById('hdrDate').textContent =
     d.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
-  document.getElementById('fSeq').value = rows.length + 1;
-  renderStores(); renderItems(); renderTimes(); renderTable();
-  // 카카오맵 초기화 (SDK 로드 완료 후)
-  if(window.kakao && kakao.maps) {
-    kakao.maps.load(() => initKakaoMap());
-  }
-};
 
-function save() {
-  localStorage.setItem('ds_rows_' + todayKey(), JSON.stringify(rows));
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 90);
-  Object.keys(localStorage).forEach(k => {
-    if (k.startsWith('ds_rows_') && new Date(k.replace('ds_rows_','')) < cutoff)
-      localStorage.removeItem(k);
-  });
-}
+  rows = JSON.parse(localStorage.getItem('ds2_rows_'+todayKey()) || '[]');
 
-// ── 점포 ──
-function renderStores() {
-  const btns = stores.map((s,i)=>`
-    <div style="position:relative;display:flex;grid-column:auto;">
-      <button class="store-btn${selStore===i?' active':''}"
-        onclick="pickStore(${i})"
-        tabindex="0"
-        data-idx="${i}"
-        style="flex:1;padding-right:22px;">${s}</button>
-      <button onclick="deleteStore(${i})" tabindex="-1"
-        style="position:absolute;top:4px;right:4px;background:none;border:none;cursor:pointer;font-size:0.65rem;color:rgba(0,0,0,0.25);padding:2px 3px;line-height:1;border-radius:3px;touch-action:manipulation;"
-        onmouseover="this.style.color='#d4460a'" onmouseout="this.style.color='rgba(0,0,0,0.25)'">✕</button>
-    </div>`).join('');
-
-  const empty = stores.length === 0
-    ? `<div style="grid-column:1/-1;text-align:center;padding:10px 0 4px;font-size:0.78rem;color:var(--muted);">아래 버튼으로 점포를 추가하세요</div>`
-    : '';
-
-  const resetBtn = stores.length > 0
-    ? `<button class="add-store-btn" style="grid-column:1/-1;color:#e57373;border-color:#e57373;" onclick="resetStores()">🗑 점포 목록 초기화</button>`
-    : '';
-
-  document.getElementById('storeGrid').innerHTML =
-    empty + btns +
-    `<button class="add-store-btn" style="grid-column:1/-1;" onclick="openStoreModal()">＋ 점포 추가</button>` +
-    resetBtn;
-
-  // 키보드 이벤트
-  document.querySelectorAll('.store-btn').forEach(btn => {
-    btn.addEventListener('keydown', e => {
-      if(document.activeElement !== btn) return;
-      const idx = parseInt(btn.dataset.idx);
-      if(e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        e.stopPropagation();
-        pickStore(idx);
-        btn.focus();
-      } else if(e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        const next = document.querySelector(`.store-btn[data-idx="${idx+1}"]`);
-        if(next) next.focus();
-      } else if(e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const prev = document.querySelector(`.store-btn[data-idx="${idx-1}"]`);
-        if(prev) prev.focus();
-      }
-    });
-  });
-}
-function deleteStore(i) {
-  if(!confirm(`"${stores[i]}" 점포를 삭제하시겠습니까?`)) return;
-  if(selStore === i) selStore = null;
-  else if(selStore > i) selStore--;
-  stores.splice(i, 1);
-  localStorage.setItem('ds_stores', JSON.stringify(stores));
   renderStores();
+  renderTimes();
+  renderTable();
+  updateSeq();
+
+  if(window.kakao && kakao.maps) kakao.maps.load(initMap);
+});
+
+// ════════════════════════════════════
+//  점포
+// ════════════════════════════════════
+function renderStores() {
+  const g = document.getElementById('storeGrid');
+  let html = '';
+  if(!stores.length) {
+    html += `<div style="grid-column:1/-1;text-align:center;padding:10px 0;font-size:.78rem;color:var(--muted);">아래 버튼으로 점포를 추가하세요</div>`;
+  }
+  stores.forEach((s,i) => {
+    html += `<div style="position:relative;">
+      <button class="sbtn${selStore===i?' on':''}" onclick="pickStore(${i})">${s}</button>
+      <button class="x" onclick="delStore(${i});event.stopPropagation();" style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:.62rem;color:rgba(0,0,0,.25);padding:1px 3px;touch-action:manipulation;">✕</button>
+    </div>`;
+  });
+  html += `<button class="store-add-btn" onclick="openStoreModal()">＋ 점포 추가</button>`;
+  if(stores.length) html += `<button class="store-reset-btn" onclick="resetStores()">🗑 점포 초기화</button>`;
+  g.innerHTML = html;
+}
+function pickStore(i) {
+  selStore = (selStore===i) ? null : i;
+  renderStores();
+  resetFields();
+}
+function openStoreModal() {
+  document.getElementById('storeModal').classList.add('open');
+  setTimeout(()=>document.getElementById('mStoreName').focus(), 50);
+}
+function closeStoreModal() {
+  document.getElementById('storeModal').classList.remove('open');
+  document.getElementById('mStoreName').value='';
+}
+function doAddStore() {
+  const n = document.getElementById('mStoreName').value.trim();
+  if(!n) return toast('점포명을 입력하세요','err');
+  stores.push(n); saveStores(); renderStores(); closeStoreModal();
+  toast('✅ '+n+' 추가됨','ok');
+}
+function delStore(i) {
+  if(!confirm(`"${stores[i]}" 점포를 삭제하시겠습니까?`)) return;
+  if(selStore===i) selStore=null; else if(selStore>i) selStore--;
+  stores.splice(i,1); saveStores(); renderStores();
 }
 function resetStores() {
   if(!confirm('점포 목록을 전부 초기화하시겠습니까?')) return;
-  stores = []; selStore = null;
-  localStorage.setItem('ds_stores', JSON.stringify(stores));
-  renderStores();
-  toast('점포 목록이 초기화되었습니다');
+  stores=[]; selStore=null; saveStores(); renderStores();
 }
-function pickStore(i) {
-  selStore = selStore===i ? null : i;
-  renderStores();
+document.addEventListener('keydown', e => {
+  if(e.key==='Enter' && document.getElementById('storeModal').classList.contains('open')) doAddStore();
+});
 
-  // 점포 선택/변경 시 입력 필드 초기화
-  ['fName','fPhone','fGoodsInput','fAmt','fDong','fBox'].forEach(id => {
-    const el = document.getElementById(id); if(el) el.value = '';
-  });
-  const selEl = document.getElementById('fGoodsItem'); if(selEl) selEl.value = '';
-  goodsList = []; renderGoodsList();
-
-  selGu = null;
-  document.querySelectorAll('.gu-btn').forEach(b => b.classList.remove('active'));
-  const disp = document.getElementById('addrGuDisp');
-  if(disp) { disp.textContent = '구 선택'; disp.style.color = 'var(--muted)'; disp.style.borderColor = 'var(--border)'; }
-
-  selTime = null; renderTimes();
-}
-function openStoreModal()  { document.getElementById('storeModal').classList.add('open'); setTimeout(()=>document.getElementById('newStoreName').focus(),50); }
-function closeStoreModal() { document.getElementById('storeModal').classList.remove('open'); document.getElementById('newStoreName').value=''; }
-function confirmAddStore() {
-  const n = document.getElementById('newStoreName').value.trim();
-  if(!n) return toast('점포명을 입력하세요','err');
-  stores.push(n); localStorage.setItem('ds_stores', JSON.stringify(stores));
-  renderStores(); closeStoreModal(); toast('✅ '+n+' 추가됨','ok');
-}
-
-// ── 지역구 ──
-function selectGu(btn) {
+// ════════════════════════════════════
+//  지역구
+// ════════════════════════════════════
+function selGu(btn) {
   const gu = btn.dataset.gu;
-  selGu = selGu===gu ? null : gu;
-  document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('active'));
-  if(selGu) btn.classList.add('active');
-  const disp = document.getElementById('addrGuDisp');
-  disp.textContent = selGu || '구 선택';
-  const colors = {동구:'#3b82f6',중구:'#d4460a',서구:'#16a34a',대덕구:'#9333ea',유성구:'#ca8a04'};
-  disp.style.color = selGu ? colors[selGu] : 'var(--muted)';
-  disp.style.borderColor = selGu ? colors[selGu] : 'var(--border)';
+  selGuVal = (selGuVal===gu) ? null : gu;
+  document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+  const d = document.getElementById('guDisp');
+  if(selGuVal) {
+    btn.classList.add('on');
+    d.textContent = selGuVal;
+    d.style.color = GU_COLOR[selGuVal];
+    d.style.borderColor = GU_COLOR[selGuVal];
+  } else {
+    d.textContent='구 선택'; d.style.color='var(--muted)'; d.style.borderColor='var(--border)';
+  }
 }
 
-// ── 품목 ──
-function renderItems() {
-  document.getElementById('itemGrid').innerHTML =
-    items.map((it,i)=>`<button class="item-btn${selItem===i?' active':''}" onclick="pickItem(${i})">${it}</button>`).join('');
+// ════════════════════════════════════
+//  물품
+// ════════════════════════════════════
+function addGoods() {
+  const inp = document.getElementById('fGoods');
+  const sel = document.getElementById('fItem');
+  const name = inp.value.trim();
+  if(!name) return;
+  goodsList.push({ name, item: sel.value||'' });
+  inp.value=''; sel.value=''; inp.focus();
+  renderGoods();
 }
-// ── 배송시간 ──
-function renderTimes() {
-  const grid = document.getElementById('timeGrid');
-  if(!grid) return;
-  if(!TIMES.length) {
-    grid.innerHTML = `<div style="grid-column:1/-1;font-size:0.75rem;color:var(--muted);padding:4px 0;">아래에서 시간을 추가하세요</div>`;
-    return;
-  }
-  grid.innerHTML = TIMES.map((t,i) => `
-    <div style="position:relative;display:flex;">
-      <button class="time-btn${selTime===i?' active':''}"
-        onclick="pickTime(${i})"
-        style="flex:1;padding-right:20px;">${t}</button>
-      <button onclick="removeTimeSlot(${i})" tabindex="-1"
-        style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:0.62rem;color:rgba(0,0,0,0.25);padding:2px 3px;border-radius:3px;line-height:1;"
-        onmouseover="this.style.color='#d4460a'" onmouseout="this.style.color='rgba(0,0,0,0.25)'">✕</button>
+function removeGoods(i) { goodsList.splice(i,1); renderGoods(); }
+function renderGoods() {
+  const el = document.getElementById('gList');
+  const cnt = document.getElementById('gCount');
+  cnt.textContent = goodsList.length ? `(${goodsList.length}개)` : '';
+  el.innerHTML = goodsList.map((g,i)=>`
+    <div class="goods-tag">
+      <span>📦 ${g.name}${g.item?` <span style="font-size:.7rem;background:var(--ink2);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px;">${g.item}</span>`:''}</span>
+      <button class="rm" onclick="removeGoods(${i})">✕</button>
     </div>`).join('');
 }
-function pickTime(i) {
-  selTime = selTime===i ? null : i;
-  renderTimes();
+
+// ════════════════════════════════════
+//  배송시간
+// ════════════════════════════════════
+function renderTimes() {
+  const g = document.getElementById('tGrid');
+  if(!times.length) { g.innerHTML=''; return; }
+  g.innerHTML = times.map((t,i)=>`
+    <div style="position:relative;">
+      <button class="tbtn${selTime===i?' on':''}" onclick="pickTime(${i})">${t}</button>
+      <button onclick="delTime(${i});event.stopPropagation();" style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:.6rem;color:rgba(0,0,0,.2);padding:1px 2px;touch-action:manipulation;">✕</button>
+    </div>`).join('');
 }
-function addTimeSlot() {
-  const ampm = document.getElementById('timeAmPm').value;
-  const hour = document.getElementById('timeHour').value;
-  const min  = document.getElementById('timeMin').value;
-  if(hour === '') return toast('시간을 선택하세요','err');
-  const label = `${ampm} ${hour}:${min}`;
-  if(TIMES.includes(label)) return toast('이미 있는 시간입니다','err');
-  TIMES.push(label);
-  localStorage.setItem('ds_times', JSON.stringify(TIMES));
-  document.getElementById('timeHour').value = '';
-  document.getElementById('timeMin').value  = '00';
-  selTime = TIMES.length - 1;
-  renderTimes();
-  toast(`✅ ${label} 추가됨`,'ok');
+function pickTime(i) { selTime=(selTime===i)?null:i; renderTimes(); }
+function addTime() {
+  const ampm = document.getElementById('tAmpm').value;
+  const h    = document.getElementById('tHour').value;
+  const m    = document.getElementById('tMin').value;
+  if(!h) return toast('시간을 선택하세요','err');
+  const label = `${ampm} ${h}:${m}`;
+  if(times.includes(label)) return toast('이미 있는 시간입니다','err');
+  times.push(label); saveTimes();
+  selTime = times.length-1;
+  document.getElementById('tHour').value='';
+  renderTimes(); toast('✅ '+label+' 추가됨','ok');
 }
-function removeTimeSlot(i) {
-  TIMES.splice(i, 1);
-  localStorage.setItem('ds_times', JSON.stringify(TIMES));
-  if(selTime === i) selTime = null;
-  else if(selTime > i) selTime--;
+function delTime(i) {
+  times.splice(i,1); saveTimes();
+  if(selTime===i) selTime=null; else if(selTime>i) selTime--;
   renderTimes();
 }
 
-// ── 행 추가 ──
+// ════════════════════════════════════
+//  행 추가
+// ════════════════════════════════════
 function addRow() {
-  const date  = document.getElementById('fDate').value;
-  const name  = document.getElementById('fName').value.trim();
-  const phone = document.getElementById('fPhone').value.trim();
-  const amt   = document.getElementById('fAmt').value;
-  const dong  = document.getElementById('fDong').value.trim();
-  const box   = document.getElementById('fBox').value;
+  const date = document.getElementById('fDate').value;
+  const name = document.getElementById('fName').value.trim();
+  const phone= document.getElementById('fPhone').value.trim();
+  const amt  = document.getElementById('fAmt').value;
+  const dong = document.getElementById('fDong').value.trim();
+  const box  = document.getElementById('fBox').value;
+  const timeLabel = selTime!==null ? times[selTime] : '-';
 
-  if(!date)             return toast('날짜를 선택하세요','err');
-  if(selStore===null)   return toast('점포를 선택하세요','err');
-  if(!name)             return toast('고객명을 입력하세요','err');
-  if(!goodsList.length) return toast('물품을 하나 이상 추가하세요','err');
+  if(!date)           return toast('날짜를 선택하세요','err');
+  if(selStore===null) return toast('점포를 선택하세요','err');
+  if(!name)           return toast('고객명을 입력하세요','err');
+  if(!goodsList.length) return toast('물품을 추가하세요','err');
 
-  const addr      = [selGu, dong].filter(Boolean).join(' ') || '-';
-  const timeLabel = selTime!==null ? TIMES[selTime] : '-';
-  const store     = stores[selStore];
-  const groupId   = Date.now();
-  // 금액: 정수로 저장
-  const amtInt    = amt ? Math.round(Number(amt)) : '';
+  const addr = [selGuVal, dong].filter(Boolean).join(' ') || '-';
+  const store = stores[selStore];
+  const groupId = Date.now();
+  const amtInt = amt ? Math.round(Number(amt)) : '';
 
   goodsList.forEach((g, gi) => {
     rows.push({
-      seq:        rows.length + 1,
-      date,       store,    name,   phone,
-      goods:      g.name,
-      item:       g.item || '-',
-      amt:        gi === 0 ? amtInt : '',
-      box:        gi === 0 ? (box || '-') : '',
-      addr,
-      gu:         selGu || '-',
-      time:       timeLabel,
-      groupId,
-      groupFirst: gi === 0,
-      groupSize:  goodsList.length
+      seq: rows.length+1, date, store, name, phone,
+      goods: g.name, item: g.item||'-',
+      amt: gi===0 ? amtInt : '',
+      box: gi===0 ? (box||'-') : '',
+      addr, gu: selGuVal||'-', time: timeLabel,
+      groupId, groupFirst: gi===0, groupSize: goodsList.length
     });
   });
 
-  save(); renderTable();
-  document.getElementById('fSeq').value = rows.length + 1;
-  resetForm();
-  toast(`✅ ${store} / ${name} — 물품 ${goodsList.length}개 추가됨`, 'ok');
-  if(window.innerWidth <= 768) switchTab('list');
+  saveRows(); renderTable(); updateSeq();
+  toast(`✅ ${store} / ${name} — ${goodsList.length}개 추가됨`,'ok');
+  resetAll();
+  if(window.innerWidth<=768) mobTab(1);
 }
 
-function resetForm() {
-  // ① 텍스트/숫자 입력 필드 전체 강제 초기화
-  ['fName','fPhone','fGoodsInput','fAmt','fDong','fBox'].forEach(id => {
-    const el = document.getElementById(id);
-    if(el) { el.value = ''; el.dispatchEvent(new Event('input')); }
+function updateSeq() { document.getElementById('fSeq').value = rows.length+1; }
+
+function resetAll() {
+  // 텍스트 필드
+  ['fName','fPhone','fGoods','fAmt','fDong','fBox'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
   });
-
-  // ② 품목 드롭다운
-  const selEl = document.getElementById('fGoodsItem');
-  if(selEl) selEl.value = '';
-
-  // ③ 물품 목록
-  goodsList = [];
-  renderGoodsList();
-
-  // ④ 점포 선택 해제
-  selStore = null;
-  renderStores();
-
-  // ⑤ 지역구 선택 해제
-  selGu = null;
-  document.querySelectorAll('.gu-btn').forEach(b => b.classList.remove('active'));
-  const disp = document.getElementById('addrGuDisp');
-  if(disp) {
-    disp.textContent = '구 선택';
-    disp.style.color = 'var(--muted)';
-    disp.style.borderColor = 'var(--border)';
-  }
-
-  // ⑥ 배송시간 선택 해제
-  selTime = null;
-  renderTimes();
-
-  // ⑦ 혹시 남아있는 모든 active 버튼 강제 해제
-  document.querySelectorAll('.store-btn.active, .gu-btn.active, .time-btn.active, .item-btn.active')
-    .forEach(b => b.classList.remove('active'));
+  document.getElementById('fItem').value='';
+  // 물품
+  goodsList=[]; renderGoods();
+  // 점포
+  selStore=null; renderStores();
+  // 지역구
+  selGuVal=null;
+  document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+  const d=document.getElementById('guDisp');
+  d.textContent='구 선택'; d.style.color='var(--muted)'; d.style.borderColor='var(--border)';
+  // 배송시간
+  selTime=null; renderTimes();
 }
 
-function deleteRow(i) {
-  const target = rows[i];
-  // 같은 묶음(groupId)이 여러 행이면 묶음 전체 삭제 여부 확인
-  if(target.groupId && target.groupSize > 1) {
-    const grouped = rows.filter(r => r.groupId === target.groupId);
-    if(!confirm(`"${target.name}"의 물품 ${grouped.length}개가 묶음입니다.\n묶음 전체를 삭제하시겠습니까?`)) return;
-    rows = rows.filter(r => r.groupId !== target.groupId);
-  } else {
-    rows.splice(i, 1);
-  }
-  rows.forEach((r, idx) => r.seq = idx + 1);
-  document.getElementById('fSeq').value = rows.length + 1;
-  save(); renderTable();
+function resetFields() {
+  ['fName','fPhone','fGoods','fAmt','fDong','fBox'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('fItem').value='';
+  goodsList=[]; renderGoods();
+  selGuVal=null;
+  document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+  const d=document.getElementById('guDisp');
+  d.textContent='구 선택'; d.style.color='var(--muted)'; d.style.borderColor='var(--border)';
+  selTime=null; renderTimes();
 }
 
-function clearAll() {
-  if(!rows.length) return;
-  if(confirm('전체 삭제하시겠습니까?')) {
-    rows=[]; document.getElementById('fSeq').value=1; save(); renderTable();
-  }
-}
-
-// ── 테이블 ──
+// ════════════════════════════════════
+//  테이블 렌더
+// ════════════════════════════════════
 function renderTable() {
   const tb = document.getElementById('tbody');
   if(!rows.length) {
-    tb.innerHTML=`<tr><td colspan="12"><div class="empty-state"><div class="icon">🚐</div><p>왼쪽에서 정보를 입력하고 추가하세요</p></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="12"><div class="empty-state"><div class="ei">📦</div><p>왼쪽에서 정보를 입력하세요</p></div></td></tr>`;
   } else {
-    tb.innerHTML = rows.map((r,i) => {
-      const isGrouped  = r.groupId && r.groupSize > 1;
-      const isFirst    = r.groupFirst;
-      const isLast     = isGrouped && (i === rows.length-1 || rows[i+1].groupId !== r.groupId);
-
-      // 묶음 행 왼쪽 세로선 스타일
-      const groupStyle = isGrouped
-        ? `border-left: 3px solid ${isFirst ? 'var(--accent)' : '#f0c0a8'};`
-        : '';
-
-      // 묶음이 아닌 첫행은 구분선 위
-      const trStyle = isGrouped && isFirst && i > 0 ? 'border-top:2px solid var(--border);' : '';
-
-      return `<tr style="${trStyle}">
-        <td style="color:var(--muted);font-size:0.72rem;${groupStyle}">${r.seq}</td>
-        <td style="font-size:0.78rem;white-space:nowrap;font-weight:700;">${r.time}</td>
-        <td style="font-size:0.78rem;">${r.date}</td>
-        <td class="store-cell">${r.store}</td>
-        <td class="name-cell">${isGrouped && !isFirst
-          ? `<span style="color:var(--muted);font-size:0.75rem;padding-left:8px;">↳ ${r.name}</span>`
-          : r.name}</td>
-        <td style="font-weight:600;">${r.goods}</td>
-        <td class="amt-cell">${r.amt !== '' && r.amt !== undefined ? Number(r.amt).toLocaleString() : (isGrouped && !isFirst ? '' : '-')}</td>
-        <td class="addr-cell">${r.addr}</td>
-        <td>${r.item && r.item !== '-' ? r.item : ''}</td>
-        <td>${isGrouped && !isFirst ? '' : r.box}</td>
-        <td>${isGrouped && !isFirst ? '' : `<span class="gu-tag ${r.gu}">${r.gu}</span>`}</td>
-        <td>${isFirst || !isGrouped ? `
-          <div style="display:flex;gap:3px;">
-            <button class="del-btn" onclick="deleteRow(${i})" title="삭제">✕</button>
-            <button class="del-btn" onclick="printLabel(${i})" title="라벨 인쇄" style="color:var(--ink2);">🖨</button>
-          </div>` : ''}</td>
+    tb.innerHTML = rows.map((r,i)=>{
+      const grp = r.groupId && r.groupSize>1;
+      const isF = r.groupFirst;
+      const gl = `border-left:3px solid ${isF?'var(--accent)':'#f0c0a8'};`;
+      return `<tr>
+        <td style="${gl}font-size:.7rem;color:var(--muted);">${r.seq}</td>
+        <td style="font-size:.75rem;">${grp&&!isF?'':r.date}</td>
+        <td style="font-size:.75rem;font-weight:700;white-space:nowrap;">${r.time}</td>
+        <td class="tc-store">${r.store}</td>
+        <td class="tc-name">${grp&&!isF?`<span style="color:var(--muted);font-size:.72rem;">↳${r.name}</span>`:r.name}</td>
+        <td style="font-weight:600;">📦 ${r.goods}${r.item&&r.item!=='-'?` <span style="font-size:.68rem;background:var(--ink2);color:#fff;padding:1px 5px;border-radius:8px;">${r.item}</span>`:''}</td>
+        <td class="tc-addr">${r.addr}</td>
+        <td class="tc-amt">${r.amt!==''&&r.amt!==undefined?Number(r.amt).toLocaleString():''}</td>
+        <td style="font-size:.75rem;">${grp&&!isF?'':r.item||'-'}</td>
+        <td>${grp&&!isF?'':r.box}</td>
+        <td>${grp&&!isF?'':'<span class="gu-tag '+r.gu+'">'+r.gu+'</span>'}</td>
+        <td>
+          ${isF||!grp?`<div style="display:flex;gap:2px;">
+            <button class="print-btn" onclick="printLabel(${i})" title="라벨">🖨</button>
+            <button class="del-btn" onclick="delRow(${i})" title="삭제">✕</button>
+          </div>`:''}
+        </td>
       </tr>`;
     }).join('');
   }
   updateSummary();
-  renderMobCards();
+  updateBadge();
+}
+
+function delRow(i) {
+  const r=rows[i];
+  if(r.groupId && r.groupSize>1) {
+    if(!confirm(`"${r.name}" 묶음 ${r.groupSize}개를 모두 삭제하시겠습니까?`)) return;
+    rows=rows.filter(x=>x.groupId!==r.groupId);
+  } else { rows.splice(i,1); }
+  rows.forEach((x,idx)=>x.seq=idx+1);
+  updateSeq(); saveRows(); renderTable();
+}
+
+function clearAll() {
+  if(!rows.length) return;
+  if(confirm('전체 삭제하시겠습니까?')) { rows=[]; updateSeq(); saveRows(); renderTable(); }
 }
 
 function updateSummary() {
-  // 건수는 실제 행 수(물품별 순번 수)
-  document.getElementById('sumCount').textContent = rows.length;
-  const guList = ['동구','중구','서구','대덕구','유성구'];
-  document.getElementById('guCounts').innerHTML = guList.map(gu=>{
-    const cnt = rows.filter(r=>r.gu===gu && (r.groupFirst || !r.groupId)).length;
-    return cnt ? `<span class="gu-pill ${GU_CLASS[gu]}">${gu} ${cnt}</span>` : '';
+  document.getElementById('sumN').textContent = rows.length;
+  const GUS = ['동구','중구','서구','대덕구','유성구'];
+  document.getElementById('guPills').innerHTML = GUS.map(gu=>{
+    const cnt = rows.filter(r=>r.gu===gu&&(r.groupFirst||!r.groupId)).length;
+    return cnt?`<span class="gu-pill ${gu}">${gu} ${cnt}</span>`:'';
   }).join('');
 }
+function updateBadge() {
+  const b=document.getElementById('mBadge');
+  b.textContent=rows.length; b.style.display=rows.length?'inline':'none';
+}
 
-// ── 엑셀 ──
+// ════════════════════════════════════
+//  엑셀 다운로드
+// ════════════════════════════════════
 async function exportExcel() {
   if(!rows.length) return toast('데이터가 없습니다','err');
   const date = document.getElementById('fDate').value.replace(/-/g,'');
-  const filename = `배송일일보고서_${date}.xlsx`;
   const header = ['순번','날짜','배송시간','점포','고객명','물품','주소','금액','품목','상자','지역구'];
-  const data = [header, ...rows.map(r => [
-    r.seq, r.date, r.time, r.store, r.name, r.goods,
-    r.addr,
-    r.amt !== '' && r.amt !== undefined ? Math.round(Number(r.amt)) : '',
-    r.item && r.item !== '-' ? r.item : '',
-    r.box !== '-' && r.box !== '' ? Number(r.box) : '',
-    r.gu
+  const data = [header, ...rows.map(r=>[
+    r.seq, r.date, r.time, r.store, r.name, r.goods, r.addr,
+    r.amt!==''&&r.amt!==undefined?Math.round(Number(r.amt)):'',
+    r.item&&r.item!=='-'?r.item:'',
+    r.box!=='-'&&r.box!==''?Number(r.box):'', r.gu
   ])];
-
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:5},{wch:10},{wch:12},{wch:12},{wch:10},{wch:16},{wch:8},{wch:10},{wch:14},{wch:6},{wch:8}];
+  ws['!cols']=[{wch:5},{wch:12},{wch:10},{wch:12},{wch:10},{wch:16},{wch:14},{wch:9},{wch:8},{wch:6},{wch:8}];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '배송보고서');
-  const wbArray = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-
-  // ── JSZip으로 styles.xml + sheet1.xml 수정 ──
+  XLSX.utils.book_append_sheet(wb,ws,'배송보고서');
+  const wbArr = XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const styleXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1A1A2E"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFAAAAAA"/></left><right style="thin"><color rgb="FFAAAAAA"/></right><top style="thin"><color rgb="FFAAAAAA"/></top><bottom style="thin"><color rgb="FFAAAAAA"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs></styleSheet>`;
   try {
-    const zip = await JSZip.loadAsync(wbArray);
-
-    // styles.xml 교체
-    zip.file('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1A1A2E"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFAAAAAA"/></left><right style="thin"><color rgb="FFAAAAAA"/></right><top style="thin"><color rgb="FFAAAAAA"/></top><bottom style="thin"><color rgb="FFAAAAAA"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs></styleSheet>`);
-
-    // sheet1.xml: 각 셀에 s 속성 추가
-    let sheetXml = await zip.file('xl/worksheets/sheet1.xml').async('string');
-    sheetXml = sheetXml.replace(/<c r="([A-Z]+)(\d+)"([^>]*?)(\/?>)/g, (m, col, row, attrs, end) => {
+    const zip = await JSZip.loadAsync(wbArr);
+    zip.file('xl/styles.xml', styleXml);
+    let sx = await zip.file('xl/worksheets/sheet1.xml').async('string');
+    sx = sx.replace(/<c r="([A-Z]+)(\d+)"([^>]*?)(\/?>)/g,(m,col,row,attrs,end)=>{
       if(attrs.includes(' s=')) return m;
-      const s = row === '1' ? '2' : '1';
-      return `<c r="${col}${row}"${attrs} s="${s}"${end}`;
+      return `<c r="${col}${row}"${attrs} s="${row==='1'?'2':'1'}"${end}`;
     });
-    zip.file('xl/worksheets/sheet1.xml', sheetXml);
-
-    const out = await zip.generateAsync({ type:'arraybuffer', compression:'DEFLATE' });
-    const blob = new Blob([out], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    zip.file('xl/worksheets/sheet1.xml',sx);
+    const out = await zip.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
+    const blob = new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`배송일일보고서_${date}.xlsx`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
     toast('📥 엑셀 다운로드 완료','ok');
   } catch(e) {
-    console.warn('스타일 적용 실패, 기본 저장:', e);
-    XLSX.writeFile(wb, filename);
-    toast('📥 엑셀 다운로드 완료 (테두리 없음)','ok');
+    XLSX.writeFile(wb,`배송일일보고서_${date}.xlsx`);
+    toast('📥 엑셀 다운로드 완료','ok');
   }
 }
 
-// ── 모바일 탭 전환 ──
-function switchTab(tab) {
-  const inputPanel = document.getElementById('inputPanel');
-  const tablePanel = document.getElementById('tablePanel');
-  const mapPanel   = document.getElementById('mapPanel');
-  const tabInput   = document.getElementById('tabInput');
-  const tabList    = document.getElementById('tabList');
-  const tabMap     = document.getElementById('tabMap');
+// ════════════════════════════════════
+//  카카오맵 & 동선
+// ════════════════════════════════════
+let _map=null, _markers=[], _polyline=null;
 
-  inputPanel.classList.remove('mob-active');
-  tablePanel.classList.remove('mob-active');
-  mapPanel  .classList.remove('mob-active');
-  [tabInput, tabList, tabMap].forEach(t => t && t.classList.remove('active'));
-
-  if(tab === 'input') {
-    inputPanel.classList.add('mob-active');
-    tabInput && tabInput.classList.add('active');
-  } else if(tab === 'list') {
-    tablePanel.classList.add('mob-active');
-    tabList && tabList.classList.add('active');
-  } else if(tab === 'map') {
-    mapPanel.classList.add('mob-active');
-    tabMap && tabMap.classList.add('active');
-    // 지도가 없으면 초기화, 있으면 resize
-    setTimeout(() => {
-      if(!window._kakaoMap && window.kakao && kakao.maps) {
-        kakao.maps.load(() => {
-          initKakaoMap();
-          setTimeout(() => kakao.maps.event.trigger(window._kakaoMap,'resize'), 200);
-        });
-      } else if(window._kakaoMap) {
-        kakao.maps.event.trigger(window._kakaoMap,'resize');
-      } else {
-        // kakao 자체가 없으면 안내
-        const rl = document.getElementById('routeList');
-        if(rl && !rl.innerHTML.includes('동선 계산')) {
-          rl.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted);">
-            <div style="font-size:2rem;margin-bottom:8px;">🗺️</div>
-            상단 <b>🗺️ 동선 계산</b> 버튼을<br>눌러주세요</div>`;
-        }
-      }
-    }, 150);
-  }
+function initMap() {
+  const c=document.getElementById('kakaoMap');
+  if(!c) return;
+  _map = new kakao.maps.Map(c,{center:new kakao.maps.LatLng(36.3279,127.4276),level:7});
+  _markers=[]; _polyline=null;
+  geocodeAddr(DEPART.addr).then(r=>{ if(r){DEPART.lat=r.lat;DEPART.lng=r.lng;} });
 }
 
-// ── 모바일 카드 렌더 ──
-function renderMobCards() {
-  const el = document.getElementById('mobCardList');
-  if(!el) return;
-  if(!rows.length) {
-    el.innerHTML = `<div style="text-align:center;padding:50px 20px;color:var(--muted);"><div style="font-size:2.5rem;margin-bottom:10px;">📦</div><p style="font-size:0.9rem;">입력 탭에서 정보를 추가하세요</p></div>`;
-    return;
-  }
-  // groupId 기준으로 묶음 첫 행만 카드 생성
-  const seen = new Set();
-  el.innerHTML = rows.map((r, i) => {
-    if(r.groupId && !r.groupFirst) return ''; // 묶음 이후 행 스킵
-    seen.add(r.groupId);
-    const groupRows = r.groupId ? rows.filter(x => x.groupId === r.groupId) : [r];
-    const goodsHtml = groupRows.map(g =>
-      `<span style="display:inline-block;margin-right:6px;">📦 ${g.goods}${g.item&&g.item!=='-'?` <span style="font-size:0.68rem;background:var(--ink2);color:#fff;padding:1px 5px;border-radius:8px;">${g.item}</span>`:''}</span>`
-    ).join('');
-
-    return `
-    <div class="mob-card">
-      <div class="mob-card-head">
-        <span class="mob-card-seq">${r.seq}${groupRows.length>1?'~'+(r.seq+groupRows.length-1):''}</span>
-        <span class="mob-card-time">${r.time}</span>
-        <span class="mob-card-store">${r.store}</span>
-        <div class="mob-card-actions">
-          <button class="del-btn" onclick="printLabel(${i})" title="라벨 인쇄" style="font-size:1.1rem;color:var(--ink2);">🖨</button>
-          <button class="del-btn" onclick="deleteRow(${i})" title="삭제" style="font-size:1rem;">✕</button>
-        </div>
-      </div>
-      <div class="mob-card-body">
-        <div class="row"><span class="lbl">고객명</span><span class="val">${r.name}</span></div>
-        <div class="row"><span class="lbl">연락처</span><span class="val">${r.phone||'-'}</span></div>
-        <div class="row"><span class="lbl">주소</span><span class="val">${r.addr}</span></div>
-        <div class="row"><span class="lbl">금액</span><span class="val">${r.amt?Number(r.amt).toLocaleString()+'원':'-'}</span></div>
-        <div class="row"><span class="lbl">상자</span><span class="val">${r.box}</span></div>
-        <div class="row"><span class="lbl">지역구</span><span class="val"><span class="gu-tag ${r.gu}">${r.gu}</span></span></div>
-      </div>
-      <div class="mob-card-goods">
-        <div class="lbl">물품</div>
-        <div class="val">${goodsHtml}</div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // 배지 업데이트
-  const badge = document.getElementById('mobBadge');
-  if(badge) {
-    badge.textContent = rows.length;
-    badge.style.display = rows.length ? 'inline-block' : 'none';
-  }
-}
-
-// ── 출발지 고정 ──
-const DEPART = {
-  name: '문창전통시장',
-  addr: '대전광역시 중구 보문로20번길 22',
-  lat: null, lng: null // 초기화 시 geocoding으로 채움
-};
-
-// ── 카카오맵 초기화 ──
-function initKakaoMap() {
-  try {
-    const container = document.getElementById('kakaoMap');
-    if(!container || !window.kakao) return;
-    const options = {
-      center: new kakao.maps.LatLng(36.3279, 127.4276), // 문창전통시장 근처
-      level: 7
-    };
-    window._kakaoMap = new kakao.maps.Map(container, options);
-    window._kakaoMarkers = [];
-    window._kakaoPolyline = null;
-
-    // 출발지 좌표 미리 변환
-    geocodeAddr(DEPART.addr).then(res => {
-      if(res) { DEPART.lat = res.lat; DEPART.lng = res.lng; }
-    });
-
-    // 출발지 마커 표시
-    setTimeout(() => addDepartMarker(), 1000);
-  } catch(e) { console.warn('카카오맵 초기화 실패:', e); }
-}
-
-// ── 출발지 마커 표시 ──
-function addDepartMarker() {
-  if(!DEPART.lat || !window._kakaoMap) return;
-  const pos = new kakao.maps.LatLng(DEPART.lat, DEPART.lng);
-  const overlay = new kakao.maps.CustomOverlay({
-    position: pos,
-    content: `<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:11px;
-      padding:4px 8px;border-radius:12px;white-space:nowrap;
-      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);margin-top:-36px;">
-      🏪 출발지</div>`,
-    map: window._kakaoMap,
-    yAnchor: 1
-  });
-  const marker = new kakao.maps.Marker({ position: pos, map: window._kakaoMap, title: '출발지: 문창전통시장' });
-  window._kakaoMarkers.push(marker, overlay);
-}
-
-// ── 주소 → 좌표 변환 (Promise) ──
 function geocodeAddr(addr) {
-  return new Promise((resolve) => {
-    if(!window.kakao || !kakao.maps.services) return resolve(null);
-    const geocoder = new kakao.maps.services.Geocoder();
-    geocoder.addressSearch(addr, (result, status) => {
-      if(status === kakao.maps.services.Status.OK) {
-        resolve({ lat: parseFloat(result[0].y), lng: parseFloat(result[0].x), addr });
-      } else resolve(null);
+  return new Promise(res=>{
+    if(!window.kakao||!kakao.maps.services) return res(null);
+    new kakao.maps.services.Geocoder().addressSearch(addr,(result,status)=>{
+      if(status===kakao.maps.services.Status.OK) res({lat:parseFloat(result[0].y),lng:parseFloat(result[0].x)});
+      else res(null);
     });
   });
 }
 
-// ── TSP 근사 알고리즘 (최근접 이웃, 출발지 고정) ──
-function calcTSP(points) {
-  if(points.length <= 1) return points;
-  const dist = (a, b) => Math.sqrt((a.lat-b.lat)**2 + (a.lng-b.lng)**2);
-  // 0번 인덱스가 출발지로 고정
-  const visited = new Array(points.length).fill(false);
-  const route = [0];
-  visited[0] = true;
-  for(let i = 1; i < points.length; i++) {
-    const last = route[route.length - 1];
-    let nearest = -1, minD = Infinity;
-    for(let j = 0; j < points.length; j++) {
-      if(!visited[j]) {
-        const d = dist(points[last], points[j]);
-        if(d < minD) { minD = d; nearest = j; }
-      }
-    }
-    route.push(nearest);
-    visited[nearest] = true;
+function tsp(pts) {
+  if(pts.length<=1) return pts;
+  const d=(a,b)=>Math.sqrt((a.lat-b.lat)**2+(a.lng-b.lng)**2);
+  const vis=new Array(pts.length).fill(false);
+  const route=[0]; vis[0]=true;
+  for(let i=1;i<pts.length;i++){
+    const last=route[route.length-1]; let near=-1,minD=Infinity;
+    for(let j=0;j<pts.length;j++) if(!vis[j]){const dd=d(pts[last],pts[j]);if(dd<minD){minD=dd;near=j;}}
+    route.push(near); vis[near]=true;
   }
-  return route.map(i => points[i]);
+  return route.map(i=>pts[i]);
 }
 
-// ── 최적 동선 계산 메인 ──
-async function calcOptimalRoute() {
+async function calcRoute() {
   if(!rows.length) return toast('배송 목록이 없습니다','err');
+  if(!window.kakao||!kakao.maps.services) {
+    toast('카카오맵 연결 실패. 인터넷 및 도메인 설정을 확인하세요','err');
+    return;
+  }
+  if(window.innerWidth<=768) mobTab(2);
 
-  // 카카오맵 로드 확인
-  if(!window.kakao || !window.kakao.maps || !window.kakao.maps.services) {
-    const routeList = document.getElementById('routeList');
-    if(window.innerWidth <= 768) switchTab('map');
-    routeList.innerHTML = `<div style="text-align:center;padding:30px;color:var(--accent);">
-      <div style="font-size:2rem;margin-bottom:10px;">⚠️</div>
-      <b>카카오맵 연결 안 됨</b><br><br>
-      <small style="color:var(--muted);line-height:1.8;">
-      아래 중 하나를 확인해 주세요:<br>
-      1. 인터넷 연결 상태 확인<br>
-      2. 카카오 콘솔 → 카카오맵 →<br>
-      &nbsp;&nbsp;Web 플랫폼에<br>
-      &nbsp;&nbsp;<b>https://sketchkim-hub.github.io</b><br>
-      &nbsp;&nbsp;등록 여부 확인<br>
-      3. 페이지 새로고침 후 재시도
-      </small></div>`;
+  const rl=document.getElementById('routeList');
+  const targets=rows.filter(r=>r.groupFirst||!r.groupId);
+  rl.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);"><div style="font-size:1.3rem;">⏳</div>주소 변환 중...(${targets.length}건)</div>`;
+
+  if(!DEPART.lat){const dep=await geocodeAddr(DEPART.addr);if(dep){DEPART.lat=dep.lat;DEPART.lng=dep.lng;}}
+
+  const results = await Promise.all(targets.map(async r=>{
+    let res = await geocodeAddr('대전광역시 '+r.addr);
+    if(!res) res = await geocodeAddr('대전광역시 '+r.addr.split(' ').slice(0,2).join(' '));
+    return res ? {...res,row:r} : {failed:true,row:r};
+  }));
+
+  const ok  = results.filter(r=>!r.failed);
+  const bad = results.filter(r=>r.failed);
+
+  if(!ok.length) {
+    rl.innerHTML=`<div style="padding:16px;color:var(--accent);"><b>❌ 모든 주소 변환 실패</b><br><br><small style="color:var(--muted);">${bad.map(b=>'• '+b.row.addr).join('<br>')}<br><br>도로명 주소로 입력해 주세요</small></div>`;
     return;
   }
 
-  const targets = rows.filter(r => r.groupFirst || !r.groupId);
-  if(!targets.length) return toast('배송 목록이 없습니다','err');
+  const allPts = DEPART.lat ? [{lat:DEPART.lat,lng:DEPART.lng,isD:true},...ok] : ok;
+  const optimal = tsp(allPts);
 
-  const routeList = document.getElementById('routeList');
-  routeList.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted);">
-    <div style="font-size:1.5rem;margin-bottom:8px;">⏳</div>주소 변환 중... (${targets.length}건)</div>`;
-  toast('🗺️ 주소 변환 중...','');
-
-  // 모바일: 지도 탭으로 자동 전환
-  if(window.innerWidth <= 768) switchTab('map');
-
-  // 출발지 좌표 확보
-  if(!DEPART.lat) {
-    const dep = await geocodeAddr(DEPART.addr);
-    if(dep) { DEPART.lat = dep.lat; DEPART.lng = dep.lng; }
-  }
-
-  // 주소 정제 함수 - 아파트 동호수 등 제거하여 인식률 향상
-  function cleanAddr(addr) {
-    // "대전광역시" 또는 "대전시" 중복 제거
-    let a = addr.replace(/^대전(광역시|시)?\s*/,'');
-    // 아파트 동/호 제거 (예: "110동 205호" → 제거)
-    a = a.replace(/\s*\d+동\s*\d*호?/g,'');
-    // 아파트명만 남기기 위해 동 이름까지만 사용
-    return '대전광역시 ' + a.trim();
-  }
-
-  // 배송지 주소 → 좌표 변환 (원본 → 정제 순으로 시도)
-  const results = await Promise.all(
-    targets.map(async r => {
-      // 1차: 원본 주소
-      const original = await geocodeAddr('대전광역시 ' + r.addr);
-      if(original) return { ...original, row: r };
-      // 2차: 동 이름만 추출
-      const dongOnly = r.addr.replace(/\s*(아파트|빌라|맨션|주공|한숲|휴먼시아|래미안|자이|푸르지오|e편한세상|롯데|현대|삼성|두산|대림|코오롱).*$/,'').trim();
-      const retry = await geocodeAddr('대전광역시 ' + dongOnly);
-      if(retry) return { ...retry, row: r };
-      // 3차: 구+동 이름만
-      const parts = r.addr.split(' ');
-      if(parts.length >= 2) {
-        const simple = await geocodeAddr('대전광역시 ' + parts[0] + ' ' + parts[1]);
-        if(simple) return { ...simple, row: r, approx: true };
-      }
-      return { failed: true, row: r };
-    })
-  );
-
-  const delivPoints = results.filter(r => !r.failed);
-  const failedList  = results.filter(r => r.failed);
-  const failed = failedList.length;
-
-  if(!delivPoints.length) {
-    routeList.innerHTML = `<div style="padding:16px;color:var(--accent);">
-      <b>❌ 모든 주소 변환 실패</b><br><br>
-      <div style="font-size:0.82rem;color:var(--muted);line-height:2;">
-      ${failedList.map(f=>`• ${f.row.addr}`).join('<br>')}
-      </div><br>
-      <div style="font-size:0.78rem;color:var(--muted);">
-      💡 주소를 도로명으로 입력해보세요<br>
-      예) 동구 용전로 123
-      </div></div>`;
-    return;
-  }
-
-  // 일부 실패해도 성공한 것만으로 계산 진행
-  routeList.innerHTML = `<div style="text-align:center;padding:20px;color:var(--muted);">
-    <div style="font-size:1.2rem;">⚙️</div>최적 경로 계산 중...</div>`;
-
-  // 출발지를 맨 앞에 추가하여 TSP 계산
-  const allPoints = DEPART.lat
-    ? [{ lat: DEPART.lat, lng: DEPART.lng, isDepart: true }, ...delivPoints]
-    : delivPoints;
-
-  const optimal = calcTSP(allPoints);
-
-  // ── 지도 초기화 및 마커/경로 표시 ──
-  clearMapMarkers();
-  const bounds = new kakao.maps.LatLngBounds();
-  const linePath = [];
-
-  optimal.forEach((p, idx) => {
-    const pos = new kakao.maps.LatLng(p.lat, p.lng);
-    linePath.push(pos);
-    bounds.extend(pos);
-
-    if(p.isDepart) {
-      // 출발지 특별 마커
-      const marker = new kakao.maps.Marker({ position: pos, map: window._kakaoMap });
-      const overlay = new kakao.maps.CustomOverlay({
-        position: pos,
-        content: `<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:11px;
-          padding:4px 10px;border-radius:12px;white-space:nowrap;
-          border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);margin-top:-38px;">
-          🏪 출발 · 문창전통시장</div>`,
-        map: window._kakaoMap, yAnchor: 1
-      });
-      window._kakaoMarkers.push(marker, overlay);
-    } else {
-      // 배송지 번호 마커
-      const delivIdx = idx; // 출발지 포함 전체 인덱스
-      const marker = new kakao.maps.Marker({
-        position: pos, map: window._kakaoMap,
-        title: `${delivIdx}. ${p.row.name}`
-      });
-      const overlay = new kakao.maps.CustomOverlay({
-        position: pos,
-        content: `<div style="background:#d4460a;color:#fff;font-weight:900;font-size:12px;
-          width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-          border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.35);margin-top:-34px;">${delivIdx}</div>`,
-        map: window._kakaoMap, yAnchor: 1
-      });
-      window._kakaoMarkers.push(marker, overlay);
-    }
+  clearMarkers();
+  const bounds=new kakao.maps.LatLngBounds(), path=[];
+  optimal.forEach((p,idx)=>{
+    const pos=new kakao.maps.LatLng(p.lat,p.lng); path.push(pos); bounds.extend(pos);
+    const m=new kakao.maps.Marker({position:pos,map:_map});
+    const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
+      content:p.isD
+        ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
+        :`<div style="background:#d4460a;color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;">${idx}</div>`
+    });
+    _markers.push(m,ov);
   });
+  _polyline=new kakao.maps.Polyline({path,strokeWeight:5,strokeColor:'#d4460a',strokeOpacity:.8,strokeStyle:'solid',map:_map});
+  _map.setBounds(bounds);
+  setTimeout(()=>kakao.maps.event.trigger(_map,'resize'),200);
 
-  // 경로선
-  window._kakaoPolyline = new kakao.maps.Polyline({
-    path: linePath,
-    strokeWeight: 5,
-    strokeColor: '#d4460a',
-    strokeOpacity: 0.8,
-    strokeStyle: 'solid',
-    map: window._kakaoMap
-  });
+  const delivOnly=optimal.filter(p=>!p.isD);
+  window._optRoute={depart:DEPART,points:delivOnly};
 
-  // 지도 범위 자동 조정 후 resize
-  window._kakaoMap.setBounds(bounds);
-  setTimeout(() => kakao.maps.event.trigger(window._kakaoMap, 'resize'), 200);
-
-  // 최적 순서 목록 (출발지 제외한 배송지만)
-  const delivOnly = optimal.filter(p => !p.isDepart);
-  routeList.innerHTML = `
-    <div style="padding:8px 0 10px;display:flex;align-items:center;gap:8px;">
-      <span style="font-size:0.78rem;color:var(--muted);">✅ ${delivOnly.length}건 최적 순서</span>
-      ${failed ? `<span style="font-size:0.75rem;color:var(--accent);">${failed}건 변환 실패</span>` : ''}
-    </div>
+  rl.innerHTML=`
+    <div style="font-size:.75rem;color:var(--muted);padding:6px 0 8px;">✅ ${delivOnly.length}건 최적 순서${bad.length?` / <span style="color:var(--accent);">${bad.length}건 실패</span>`:''}</div>
     <div class="route-card" style="background:#f0f4ff;">
-      <div class="route-num" style="background:#1a1a2e;font-size:0.7rem;width:30px;height:30px;">출발</div>
-      <div class="route-info">
-        <div class="route-name">🏪 문창전통시장</div>
-        <div class="route-addr">📍 대전 중구 보문로20번길 22</div>
-      </div>
+      <div class="route-num" style="background:#1a1a2e;font-size:.65rem;width:28px;height:28px;">출발</div>
+      <div class="route-info"><div class="route-name">🏪 문창전통시장</div><div class="route-addr">📍 대전 중구 보문로20번길 22</div></div>
     </div>` +
-    delivOnly.map((p, idx) => {
-      const r = p.row;
-      const goodsRows = rows.filter(x => r.groupId ? x.groupId === r.groupId : x === r);
-      const goodsText = goodsRows.map(g => g.goods).join(', ');
+    delivOnly.map((p,idx)=>{
+      const r=p.row;
+      const goods=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
       return `<div class="route-card">
         <div class="route-num">${idx+1}</div>
         <div class="route-info">
           <div class="route-name">${r.store} · ${r.name}</div>
-          <div class="route-addr">📍 ${r.addr}${p.approx?' <span style="color:orange;font-size:0.7rem;">(근사)</span>':''}</div>
-          <div class="route-goods">📦 ${goodsText}</div>
+          <div class="route-addr">📍 ${r.addr}</div>
+          <div class="route-goods">📦 ${goods}</div>
         </div>
       </div>`;
     }).join('') +
-    (failedList.length ? `<div style="margin-top:10px;padding:10px;background:#fff5f2;border-radius:8px;font-size:0.78rem;">
-      <b style="color:var(--accent);">⚠️ 주소 변환 실패 (${failedList.length}건)</b>
-      ${failedList.map(f=>`<div style="color:var(--muted);margin-top:4px;">• ${f.row.name}: ${f.row.addr}</div>`).join('')}
-      <div style="margin-top:6px;color:var(--muted);">💡 도로명 주소로 수정해 주세요</div>
-    </div>` : '');
-
-  // 최적 경로 전역 저장 (카카오맵 앱 연동용)
-  window._optimalRoute = { depart: DEPART, points: delivOnly };
-
-  // 액션 버튼 추가
-  const actionBar = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-      <button onclick="openKakaoMapApp()" style="padding:12px 8px;background:#FEE500;color:#3C1E1E;border:none;border-radius:9px;font-size:0.82rem;font-weight:900;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
-        <span style="font-size:1.1rem;">🗺️</span>카카오맵으로 열기
-      </button>
-      <button onclick="shareRoute()" style="padding:12px 8px;background:var(--ink2);color:#fff;border:none;border-radius:9px;font-size:0.82rem;font-weight:900;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
-        <span style="font-size:1.1rem;">📤</span>기사님께 공유
-      </button>
+    (bad.length?`<div style="margin-top:10px;padding:10px;background:#fff5f2;border-radius:8px;font-size:.75rem;"><b style="color:var(--accent);">⚠️ 주소 변환 실패 (${bad.length}건)</b>${bad.map(b=>`<div style="color:var(--muted);margin-top:3px;">• ${b.row.name}: ${b.row.addr}</div>`).join('')}</div>`:'') +
+    `<div class="action-btns">
+      <button class="kakao-btn" onclick="openKakaoApp()">🗺️ 카카오맵으로 열기</button>
+      <button class="share-btn" onclick="shareRoute()">📤 기사님께 공유</button>
     </div>`;
 
-  document.getElementById('routeList').innerHTML += actionBar;
-
-  toast(`✅ ${delivOnly.length}건 최적 동선 계산 완료`,'ok');
-  document.getElementById('mapPanel').classList.add('active');
+  toast(`✅ ${delivOnly.length}건 최적 동선 완료`,'ok');
 }
 
-// ── 카카오맵 앱으로 열기 ──
-function openKakaoMapApp() {
-  const route = window._optimalRoute;
-  if(!route || !route.points.length) return toast('동선을 먼저 계산해 주세요','err');
-
-  const points = route.points;
-
-  // 카카오맵 길찾기 URL 스킴
-  // 출발지 → 경유지들 → 마지막 목적지
-  const origin = encodeURIComponent(route.depart.name);
-  const originLat = route.depart.lat;
-  const originLng = route.depart.lng;
-
-  // 경유지 최대 3개 (카카오맵 제한)
-  const waypoints = points.slice(0, -1).slice(0, 3);
-  const destination = points[points.length - 1];
-
-  // 카카오맵 앱 URL 스킴 (모바일)
-  const destName = encodeURIComponent(destination.row.name + ' ' + destination.row.addr);
-  const destLat  = destination.lat;
-  const destLng  = destination.lng;
-
-  let kakaoUrl = `kakaomap://route?sp=${originLat},${originLng}&ep=${destLat},${destLng}&by=CAR`;
-
-  // 경유지 추가 (최대 3개)
-  waypoints.forEach((wp, i) => {
-    kakaoUrl += `&via${i+1}=${wp.lat},${wp.lng}`;
-  });
-
-  // 앱이 없으면 웹으로 fallback
-  const webUrl = `https://map.kakao.com/link/to/${destName},${destLat},${destLng}`;
-
-  // 모바일: 앱 시도 → 실패시 웹
-  if(/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    window.location.href = kakaoUrl;
-    setTimeout(() => window.open(webUrl, '_blank'), 2000);
-  } else {
-    // PC: 웹 카카오맵으로
-    window.open(webUrl, '_blank');
-  }
+function clearMarkers() {
+  _markers.forEach(m=>m.setMap(null)); _markers=[];
+  if(_polyline){_polyline.setMap(null);_polyline=null;}
 }
-
-// ── 기사님께 공유 ──
-function shareRoute() {
-  const route = window._optimalRoute;
-  if(!route || !route.points.length) return toast('동선을 먼저 계산해 주세요','err');
-
-  const date = document.getElementById('fDate').value;
-  const points = route.points;
-
-  // 공유 텍스트 생성
-  const lines = [
-    `🚐 ${date} 배송 동선 (${points.length}건)`,
-    `📍 출발: 문창전통시장`,
-    ``,
-    ...points.map((p, i) => {
-      const r = p.row;
-      const goods = [r, ...rows.filter(x => r.groupId && x.groupId === r.groupId && x !== r)]
-        .map(x => x.goods).join(', ');
-      return `${i+1}. ${r.name} (${r.addr})\n   📦 ${goods}${r.phone ? '\n   📞 '+r.phone : ''}`;
-    }),
-    ``,
-    `🗺️ 지도 보기: https://sketchkim-hub.github.io/delivery`
-  ];
-
-  const shareText = lines.join('\n');
-
-  // Web Share API (모바일 크롬 지원)
-  if(navigator.share) {
-    navigator.share({
-      title: `${date} 배송 동선`,
-      text: shareText
-    }).then(() => toast('✅ 공유 완료','ok'))
-      .catch(() => copyToClipboard(shareText));
-  } else {
-    // PC: 클립보드 복사
-    copyToClipboard(shareText);
-  }
-}
-
-function copyToClipboard(text) {
-  if(navigator.clipboard) {
-    navigator.clipboard.writeText(text)
-      .then(() => toast('📋 클립보드에 복사됨 — 카톡/문자에 붙여넣기 하세요','ok'))
-      .catch(() => fallbackCopy(text));
-  } else {
-    fallbackCopy(text);
-  }
-}
-
-function fallbackCopy(text) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.select();
-  document.execCommand('copy');
-  document.body.removeChild(ta);
-  toast('📋 클립보드에 복사됨 — 카톡/문자에 붙여넣기 하세요','ok');
-}
-  if(window._kakaoMarkers) window._kakaoMarkers.forEach(m => m.setMap(null));
-  window._kakaoMarkers = [];
-  if(window._kakaoPolyline) window._kakaoPolyline.setMap(null);
-  window._kakaoPolyline = null;
-}
-
 function resetRoute() {
-  clearMapMarkers();
-  if(window._kakaoMap) window._kakaoMap.setLevel(7);
-  document.getElementById('routeList').innerHTML = `
-    <div style="text-align:center;padding:30px 0;color:var(--muted);font-size:0.85rem;">
-      <div style="font-size:2rem;margin-bottom:8px;">🚗</div>
-      목록에 주소를 입력하고<br>동선 계산 버튼을 눌러주세요
-    </div>`;
+  clearMarkers();
+  if(_map) _map.setLevel(7);
+  document.getElementById('routeList').innerHTML=`<div class="empty-state"><div class="ei">🚗</div><p style="font-size:.85rem;">동선 계산 버튼을 눌러주세요</p></div>`;
 }
 
-// ── 카카오맵 로드 완료 후 초기화 ──
-function buildLabelHtml(groupRows) {
-  const r = groupRows[0];
-  const goodsText = groupRows.map(g => g.goods + (g.item && g.item!=='-' ? ` (${g.item})` : '')).join('\n');
-  return `
-  <div class="label-card">
-    <table>
-      <tr>
-        <td class="lbl">점포 명</td>
-        <td class="val big" colspan="3">${r.store||''}</td>
-        <td class="lbl">점포&#10;연락처</td>
-        <td class="val"></td>
-      </tr>
-      <tr>
-        <td class="lbl">받는&#10;사람</td>
-        <td class="val big" colspan="3">${r.name||''}</td>
-        <td class="lbl">연락처</td>
-        <td class="val big">${r.phone||''}</td>
-      </tr>
-      <tr>
-        <td class="lbl">주소</td>
-        <td class="val addr" colspan="5">${r.addr||''}</td>
-      </tr>
-      <tr>
-        <td class="lbl">상품 명</td>
-        <td class="val goods" colspan="5">${goodsText}</td>
-      </tr>
-      <tr>
-        <td class="lbl">배송&#10;메모</td>
-        <td class="val" colspan="5">${r.time||''}</td>
-      </tr>
-    </table>
-  </div>`
-;}
+function openKakaoApp() {
+  const rt=window._optRoute; if(!rt||!rt.points.length) return;
+  const dest=rt.points[rt.points.length-1];
+  const destName=encodeURIComponent(dest.row.name+' '+dest.row.addr);
+  const webUrl=`https://map.kakao.com/link/to/${destName},${dest.lat},${dest.lng}`;
+  if(/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+    let url=`kakaomap://route?sp=${DEPART.lat},${DEPART.lng}&ep=${dest.lat},${dest.lng}&by=CAR`;
+    rt.points.slice(0,-1).slice(0,3).forEach((p,i)=>{ url+=`&via${i+1}=${p.lat},${p.lng}`; });
+    window.location.href=url;
+    setTimeout(()=>window.open(webUrl,'_blank'),2000);
+  } else { window.open(webUrl,'_blank'); }
+}
 
-let _printHtml = '';
+function shareRoute() {
+  const rt=window._optRoute; if(!rt||!rt.points.length) return;
+  const date=document.getElementById('fDate').value;
+  const txt=[
+    `🚐 ${date} 배송 동선 (${rt.points.length}건)`,
+    `📍 출발: 문창전통시장`, '',
+    ...rt.points.map((p,i)=>{
+      const r=p.row;
+      const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
+      return `${i+1}. ${r.name} (${r.addr})\n   📦 ${g}${r.phone?'\n   📞 '+r.phone:''}`;
+    }),
+    '', `🗺️ https://sketchkim-hub.github.io/delivery`
+  ].join('\n');
+  if(navigator.share) {
+    navigator.share({title:`${date} 배송 동선`,text:txt}).catch(()=>copyText(txt));
+  } else { copyText(txt); }
+}
+function copyText(txt) {
+  if(navigator.clipboard) navigator.clipboard.writeText(txt).then(()=>toast('📋 복사됨 — 카톡에 붙여넣기 하세요','ok')).catch(()=>fallCopy(txt));
+  else fallCopy(txt);
+}
+function fallCopy(txt) {
+  const ta=document.createElement('textarea'); ta.value=txt;
+  ta.style.cssText='position:fixed;opacity:0;'; document.body.appendChild(ta);
+  ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  toast('📋 복사됨 — 카톡에 붙여넣기 하세요','ok');
+}
 
+// ════════════════════════════════════
+//  라벨 인쇄
+// ════════════════════════════════════
+let _printHtml='';
 function printLabel(i) {
-  const r = rows[i];
-  // 묶음이면 같은 groupId 전체 수집, 아니면 단일
-  const groupRows = r.groupId
-    ? rows.filter(x => x.groupId === r.groupId)
-    : [r];
-
-  const html = buildLabelHtml(groupRows);
-  _printHtml = html;
-
-  document.getElementById('labelPreview').innerHTML = `
-    <table style="width:100%;height:100%;border-collapse:collapse;font-family:'Malgun Gothic',sans-serif;table-layout:fixed;border:3px solid #000;">
+  const r=rows[i];
+  const grpRows=r.groupId?rows.filter(x=>x.groupId===r.groupId):[r];
+  const goodsTxt=grpRows.map(g=>g.goods+(g.item&&g.item!=='-'?` (${g.item})`:'') ).join('\n');
+  _printHtml=`<div class="label-card"><table>
+    <tr><td class="lbl-h">점포 명</td><td class="lbl-big" colspan="3">${r.store||''}</td><td class="lbl-h">점포&#10;연락처</td><td class="lbl-v"></td></tr>
+    <tr><td class="lbl-h">받는&#10;사람</td><td class="lbl-big" colspan="3">${r.name||''}</td><td class="lbl-h">연락처</td><td class="lbl-big">${r.phone||''}</td></tr>
+    <tr><td class="lbl-h">주소</td><td class="lbl-addr" colspan="5">${r.addr||''}</td></tr>
+    <tr><td class="lbl-h">상품 명</td><td class="lbl-goods" colspan="5">${goodsTxt}</td></tr>
+    <tr><td class="lbl-h">배송&#10;메모</td><td class="lbl-v" colspan="5">${r.time||''}</td></tr>
+  </table></div>`;
+  // 미리보기
+  document.getElementById('labelPreview').innerHTML=`
+    <table style="width:100%;height:100%;border-collapse:collapse;font-family:'Malgun Gothic',sans-serif;table-layout:fixed;">
       <colgroup><col style="width:16%"><col><col><col><col style="width:14%"><col style="width:22%"></colgroup>
       <tr style="height:20%">
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.7rem;">점포 명</td>
-        <td style="border:3px solid #000;padding:2px 6px;font-weight:900;font-size:1.05rem;" colspan="3">${r.store||''}</td>
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.62rem;white-space:pre-line;">점포&#10;연락처</td>
-        <td style="border:3px solid #000;padding:2px 4px;font-size:0.75rem;"></td>
+        <td style="border:2px solid #000;padding:3px 5px;font-weight:900;background:#eee;text-align:center;font-size:.68rem;">점포 명</td>
+        <td style="border:2px solid #000;padding:3px 6px;font-weight:900;font-size:.95rem;" colspan="3">${r.store||''}</td>
+        <td style="border:2px solid #000;padding:3px 4px;font-weight:900;background:#eee;text-align:center;font-size:.6rem;white-space:pre-line;">점포&#10;연락처</td>
+        <td style="border:2px solid #000;padding:3px 4px;"></td>
       </tr>
       <tr style="height:20%">
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.62rem;white-space:pre-line;">받는&#10;사람</td>
-        <td style="border:3px solid #000;padding:2px 6px;font-weight:900;font-size:1.05rem;" colspan="3">${r.name||''}</td>
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.7rem;">연락처</td>
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:700;font-size:0.82rem;">${r.phone||''}</td>
+        <td style="border:2px solid #000;padding:3px 5px;font-weight:900;background:#eee;text-align:center;font-size:.6rem;white-space:pre-line;">받는&#10;사람</td>
+        <td style="border:2px solid #000;padding:3px 6px;font-weight:900;font-size:.95rem;" colspan="3">${r.name||''}</td>
+        <td style="border:2px solid #000;padding:3px 4px;font-weight:900;background:#eee;text-align:center;font-size:.68rem;">연락처</td>
+        <td style="border:2px solid #000;padding:3px 4px;font-weight:700;font-size:.8rem;">${r.phone||''}</td>
       </tr>
       <tr style="height:15%">
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.7rem;">주소</td>
-        <td style="border:3px solid #000;padding:2px 6px;font-size:0.88rem;font-weight:700;" colspan="5">${r.addr||''}</td>
+        <td style="border:2px solid #000;padding:3px 5px;font-weight:900;background:#eee;text-align:center;font-size:.68rem;">주소</td>
+        <td style="border:2px solid #000;padding:3px 6px;font-size:.85rem;font-weight:700;" colspan="5">${r.addr||''}</td>
       </tr>
       <tr style="height:30%">
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.7rem;">상품 명</td>
-        <td style="border:3px solid #000;padding:2px 6px;white-space:pre-line;font-size:0.85rem;vertical-align:top;" colspan="5">${groupRows.map(g=>g.goods+(g.item&&g.item!=='-'?` (${g.item})`:'')). join('\n')}</td>
+        <td style="border:2px solid #000;padding:3px 5px;font-weight:900;background:#eee;text-align:center;font-size:.68rem;">상품 명</td>
+        <td style="border:2px solid #000;padding:3px 6px;white-space:pre-line;font-size:.82rem;vertical-align:top;" colspan="5">${goodsTxt}</td>
       </tr>
       <tr style="height:15%">
-        <td style="border:3px solid #000;padding:2px 4px;font-weight:900;background:#ebebeb;text-align:center;font-size:0.62rem;white-space:pre-line;">배송&#10;메모</td>
-        <td style="border:3px solid #000;padding:2px 6px;font-size:0.85rem;" colspan="5">${r.time||''}</td>
+        <td style="border:2px solid #000;padding:3px 5px;font-weight:900;background:#eee;text-align:center;font-size:.6rem;white-space:pre-line;">배송&#10;메모</td>
+        <td style="border:2px solid #000;padding:3px 6px;font-size:.82rem;" colspan="5">${r.time||''}</td>
       </tr>
     </table>`;
-
   document.getElementById('labelModal').classList.add('open');
 }
-
-function closeLabelModal() {
-  document.getElementById('labelModal').classList.remove('open');
-}
-
 function doPrint() {
-  const area = document.getElementById('printArea');
-  area.innerHTML = _printHtml;
+  document.getElementById('printArea').innerHTML=_printHtml;
   window.print();
-  area.innerHTML = '';
-}
-function toast(msg, type='') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show'+(type?' '+type:'');
-  clearTimeout(t._t);
-  t._t = setTimeout(()=>t.className='toast', 2500);
+  document.getElementById('printArea').innerHTML='';
 }
 
-document.addEventListener('keydown', e=>{
-  if(e.key==='Enter' && document.getElementById('storeModal').classList.contains('open')) confirmAddStore();
-});
+// ════════════════════════════════════
+//  모바일 탭 전환
+// ════════════════════════════════════
+function mobTab(idx) {
+  ['pLeft','pMid','pRight'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    el.classList.toggle('on', i===idx);
+  });
+  ['t0','t1','t2'].forEach((id,i)=>{
+    document.getElementById(id).classList.toggle('on', i===idx);
+  });
+  if(idx===2) setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); },200);
+}
+
+// ════════════════════════════════════
+//  토스트
+// ════════════════════════════════════
+function toast(msg, type='') {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show'+(type?' '+type:'');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className='toast',2500);
+}
 </script>
 </body>
 </html>
