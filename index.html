@@ -490,7 +490,12 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 // ════════════════════════════════════
 const ITEMS = ['농산물','수산물','축산물','가공식품','생활','의류','기타'];
 const GU_COLOR = {동구:'#3b82f6',중구:'#d4460a',서구:'#16a34a',대덕구:'#9333ea',유성구:'#ca8a04'};
-const DEPART = { name:'문창전통시장', addr:'대전광역시 중구 보문로20번길 22', lat:null, lng:null };
+const DEPART = {
+  name:'문창전통시장',
+  addr:'대전광역시 중구 보문로20번길 22',
+  lat: 36.32791,  // 하드코딩 (geocoding 실패 대비)
+  lng: 127.42748
+};
 
 let stores  = JSON.parse(localStorage.getItem('ds2_stores') || '[]');
 let times   = JSON.parse(localStorage.getItem('ds2_times')  || '["오전 9:10","오후 1:10"]');
@@ -832,21 +837,17 @@ let _map=null, _markers=[], _polyline=null;
 function initMap() {
   const c=document.getElementById('kakaoMap');
   if(!c) return;
-  // 문창전통시장 중심, 레벨 5 (동네 수준)
-  _map = new kakao.maps.Map(c,{center:new kakao.maps.LatLng(36.3279,127.4276),level:5});
+  const center = new kakao.maps.LatLng(DEPART.lat, DEPART.lng);
+  _map = new kakao.maps.Map(c, { center, level:5 });
   _markers=[]; _polyline=null;
-  // 출발지 좌표 미리 변환
+  // 출발지 마커
+  const ov=new kakao.maps.CustomOverlay({position:center,map:_map,yAnchor:1,
+    content:`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 문창전통시장</div>`
+  });
+  _markers.push(ov);
+  // geocoding으로 정밀 보정 (성공하면 업데이트)
   geocodeAddr(DEPART.addr).then(r=>{
-    if(r){
-      DEPART.lat=r.lat; DEPART.lng=r.lng;
-      // 출발지 마커 표시
-      const pos=new kakao.maps.LatLng(r.lat,r.lng);
-      _map.setCenter(pos);
-      const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
-        content:`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 문창전통시장</div>`
-      });
-      _markers.push(ov);
-    }
+    if(r){ DEPART.lat=r.lat; DEPART.lng=r.lng; }
   });
 }
 
@@ -1129,15 +1130,31 @@ function mobTab(idx) {
   });
   if(idx===2) {
     setTimeout(()=>{
-      if(_map) {
+      const c=document.getElementById('kakaoMap');
+      if(!c||!window.kakao||!kakao.maps) return;
+      // 지도가 없거나 크기가 0이면 새로 생성
+      if(!_map || c.offsetWidth===0) {
+        kakao.maps.load(()=>{
+          _map = new kakao.maps.Map(c,{
+            center: new kakao.maps.LatLng(36.3279,127.4276),
+            level: 5
+          });
+          _markers=[]; _polyline=null;
+          if(DEPART.lat) {
+            _map.setCenter(new kakao.maps.LatLng(DEPART.lat,DEPART.lng));
+          }
+          kakao.maps.event.trigger(_map,'resize');
+        });
+      } else {
         kakao.maps.event.trigger(_map,'resize');
-        // 마커가 없으면 문창전통시장 중심으로
-        if(_markers.length===0 && DEPART.lat) {
-          _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
-          _map.setLevel(5);
-        }
+        setTimeout(()=>{
+          if(DEPART.lat && _markers.length<=1) {
+            _map.setCenter(new kakao.maps.LatLng(DEPART.lat,DEPART.lng));
+            _map.setLevel(5);
+          }
+        },100);
       }
-    },200);
+    },300);
   }
 }
 
