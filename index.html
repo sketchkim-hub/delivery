@@ -524,7 +524,11 @@ window.addEventListener('DOMContentLoaded', () => {
   renderTable();
   updateSeq();
 
-  if(window.kakao && kakao.maps) kakao.maps.load(initMap);
+  if(window.kakao && kakao.maps) kakao.maps.load(()=>{
+    initMap();
+    // 저장된 데이터가 있으면 마커 복원
+    if(rows.length) setTimeout(rebuildPreviewMarkers, 1000);
+  });
 });
 
 // ════════════════════════════════════
@@ -688,6 +692,8 @@ function addRow() {
   toast(`✅ ${store} / ${name} — ${goodsList.length}개 추가됨`,'ok');
   resetAll();
   if(window.innerWidth<=768) mobTab(1);
+  // 지도에 자동으로 마커 추가
+  addPreviewMarker(addr, name, store, goodsList.map(g=>g.name).join(', '));
 }
 
 function updateSeq() { document.getElementById('fSeq').value = rows.length+1; }
@@ -769,11 +775,15 @@ function delRow(i) {
   } else { rows.splice(i,1); }
   rows.forEach((x,idx)=>x.seq=idx+1);
   updateSeq(); saveRows(); renderTable();
+  rebuildPreviewMarkers();
 }
 
 function clearAll() {
   if(!rows.length) return;
-  if(confirm('전체 삭제하시겠습니까?')) { rows=[]; updateSeq(); saveRows(); renderTable(); }
+  if(confirm('전체 삭제하시겠습니까?')) {
+    rows=[]; updateSeq(); saveRows(); renderTable();
+    clearPreviewMarkers(); clearMarkers();
+  }
 }
 
 function updateSummary() {
@@ -833,6 +843,63 @@ async function exportExcel() {
 //  카카오맵 & 동선
 // ════════════════════════════════════
 let _map=null, _markers=[], _polyline=null;
+let _previewMarkers = []; // 입력 단계 미리보기 마커
+
+// ── 입력 시 미리보기 마커 추가 ──
+async function addPreviewMarker(addr, name, store, goods) {
+  if(!_map||!window.kakao||!kakao.maps.services) return;
+  const res = await geocodeAddr('대전광역시 ' + addr);
+  if(!res) return;
+  const pos = new kakao.maps.LatLng(res.lat, res.lng);
+  const seq = rows.filter(r=>r.groupFirst||!r.groupId).length; // 현재 고객 순번
+  // 파란색 미리보기 마커 (동선 계산 전)
+  const marker = new kakao.maps.Marker({ position:pos, map:_map });
+  const overlay = new kakao.maps.CustomOverlay({
+    position: pos, map: _map, yAnchor: 1,
+    content: `<div style="background:#2563eb;color:#fff;font-size:11px;font-weight:900;
+      padding:3px 9px;border-radius:12px;white-space:nowrap;
+      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);margin-top:-36px;
+      max-width:120px;overflow:hidden;text-overflow:ellipsis;">
+      ${seq}. ${name}</div>`
+  });
+  _previewMarkers.push(marker, overlay);
+  // 지도 중심 이동
+  _map.setCenter(pos);
+  _map.setLevel(5);
+}
+
+// ── 미리보기 마커만 제거 ──
+function clearPreviewMarkers() {
+  _previewMarkers.forEach(m=>m.setMap(null));
+  _previewMarkers=[];
+}
+
+// ── 전체 목록을 미리보기 마커로 다시 그리기 ──
+async function rebuildPreviewMarkers() {
+  clearPreviewMarkers();
+  if(!_map||!window.kakao||!kakao.maps.services) return;
+  const targets = rows.filter(r=>r.groupFirst||!r.groupId);
+  const bounds = new kakao.maps.LatLngBounds();
+  // 출발지 마커
+  if(DEPART.lat) bounds.extend(new kakao.maps.LatLng(DEPART.lat,DEPART.lng));
+  for(let i=0;i<targets.length;i++){
+    const r=targets[i];
+    const res = await geocodeAddr('대전광역시 '+r.addr);
+    if(!res) continue;
+    const pos=new kakao.maps.LatLng(res.lat,res.lng);
+    bounds.extend(pos);
+    const marker=new kakao.maps.Marker({position:pos,map:_map});
+    const overlay=new kakao.maps.CustomOverlay({
+      position:pos,map:_map,yAnchor:1,
+      content:`<div style="background:#2563eb;color:#fff;font-size:11px;font-weight:900;
+        padding:3px 9px;border-radius:12px;white-space:nowrap;
+        border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);margin-top:-36px;">
+        ${i+1}. ${r.name}</div>`
+    });
+    _previewMarkers.push(marker,overlay);
+  }
+  if(!bounds.isEmpty()) _map.setBounds(bounds);
+}
 
 function initMap() {
   const c=document.getElementById('kakaoMap');
@@ -881,6 +948,7 @@ async function calcRoute() {
     return;
   }
   if(window.innerWidth<=768) mobTab(2);
+  clearPreviewMarkers(); // 미리보기 마커 제거 후 도로 경로로 교체
 
   const rl=document.getElementById('routeList');
   const targets=rows.filter(r=>r.groupFirst||!r.groupId);
@@ -983,25 +1051,23 @@ function moveRoute(idx, dir) {
 }
 
 // ── 지도 경로만 업데이트 ──
-// ── 실제 도로 경로 (카카오 Directions API) ──
+// ── 실제 도로 경로 (OSRM → 실패 시 직선) ──
 async function getRoadPath(origin, dest) {
+  // OSRM 공개 API (OpenStreetMap 기반, CORS 허용, 무료)
   try {
-    const url = `https://apis-navi.kakaomobility.com/v1/directions?origin=${origin.lng},${origin.lat}&destination=${dest.lng},${dest.lat}&priority=RECOMMEND`;
-    const res = await fetch(url, {
-      headers: { 'Authorization': 'KakaoAK 140266d65f6a5afa8dd829ba9e449040' }
-    });
-    if(!res.ok) return null;
-    const data = await res.json();
-    if(!data.routes||!data.routes[0]||data.routes[0].result_code!==0) return null;
-    const path=[];
-    data.routes[0].sections.forEach(sec=>{
-      sec.roads.forEach(road=>{
-        for(let i=0;i<road.vertexes.length;i+=2)
-          path.push(new kakao.maps.LatLng(road.vertexes[i+1],road.vertexes[i]));
-      });
-    });
-    return path;
-  } catch(e) { return null; }
+    const url = `https://router.project-osrm.org/route/v1/driving/`+
+      `${origin.lng},${origin.lat};${dest.lng},${dest.lat}`+
+      `?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if(res.ok) {
+      const data = await res.json();
+      if(data.code==='Ok' && data.routes && data.routes[0]) {
+        return data.routes[0].geometry.coordinates
+          .map(([lng,lat]) => new kakao.maps.LatLng(lat, lng));
+      }
+    }
+  } catch(e) {}
+  return null; // 실패 시 null → 점선 직선으로 대체
 }
 
 // ── 지도 경로 업데이트 (도로 경로) ──
