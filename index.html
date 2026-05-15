@@ -905,25 +905,15 @@ async function calcRoute() {
   const allPts = DEPART.lat ? [{lat:DEPART.lat,lng:DEPART.lng,isD:true},...ok] : ok;
   const optimal = tsp(allPts);
 
-  clearMarkers();
-  const bounds=new kakao.maps.LatLngBounds(), path=[];
-  optimal.forEach((p,idx)=>{
-    const pos=new kakao.maps.LatLng(p.lat,p.lng); path.push(pos); bounds.extend(pos);
-    const m=new kakao.maps.Marker({position:pos,map:_map});
-    const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
-      content:p.isD
-        ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
-        :`<div style="background:#d4460a;color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;">${idx}</div>`
-    });
-    _markers.push(m,ov);
-  });
-  _polyline=new kakao.maps.Polyline({path,strokeWeight:5,strokeColor:'#d4460a',strokeOpacity:.8,strokeStyle:'solid',map:_map});
-  _map.setBounds(bounds);
-  setTimeout(()=>kakao.maps.event.trigger(_map,'resize'),200);
-
   const delivOnly=optimal.filter(p=>!p.isD);
   window._optRoute={depart:DEPART,points:delivOnly};
   window._badList=bad;
+
+  // 도로 경로로 지도 그리기
+  toast('🗺️ 도로 경로 계산 중...','');
+  await updateMapRoute();
+  setTimeout(()=>kakao.maps.event.trigger(_map,'resize'),200);
+
   renderRouteList();
   toast(`✅ ${delivOnly.length}건 최적 동선 완료`,'ok');
 }
@@ -993,15 +983,37 @@ function moveRoute(idx, dir) {
 }
 
 // ── 지도 경로만 업데이트 ──
-function updateMapRoute() {
+// ── 실제 도로 경로 (카카오 Directions API) ──
+async function getRoadPath(origin, dest) {
+  try {
+    const url = `https://apis-navi.kakaomobility.com/v1/directions?origin=${origin.lng},${origin.lat}&destination=${dest.lng},${dest.lat}&priority=RECOMMEND`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': 'KakaoAK 140266d65f6a5afa8dd829ba9e449040' }
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!data.routes||!data.routes[0]||data.routes[0].result_code!==0) return null;
+    const path=[];
+    data.routes[0].sections.forEach(sec=>{
+      sec.roads.forEach(road=>{
+        for(let i=0;i<road.vertexes.length;i+=2)
+          path.push(new kakao.maps.LatLng(road.vertexes[i+1],road.vertexes[i]));
+      });
+    });
+    return path;
+  } catch(e) { return null; }
+}
+
+// ── 지도 경로 업데이트 (도로 경로) ──
+async function updateMapRoute() {
   if(!_map||!window._optRoute) return;
   clearMarkers();
-  const allPts = DEPART.lat
-    ? [{lat:DEPART.lat,lng:DEPART.lng,isD:true},...window._optRoute.points]
-    : window._optRoute.points;
-  const bounds=new kakao.maps.LatLngBounds(), path=[];
+  const allPts = [{lat:DEPART.lat,lng:DEPART.lng,isD:true},...window._optRoute.points];
+  const bounds = new kakao.maps.LatLngBounds();
+
+  // 마커 먼저 표시
   allPts.forEach((p,idx)=>{
-    const pos=new kakao.maps.LatLng(p.lat,p.lng); path.push(pos); bounds.extend(pos);
+    const pos=new kakao.maps.LatLng(p.lat,p.lng); bounds.extend(pos);
     const m=new kakao.maps.Marker({position:pos,map:_map});
     const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
       content:p.isD
@@ -1010,8 +1022,28 @@ function updateMapRoute() {
     });
     _markers.push(m,ov);
   });
-  _polyline=new kakao.maps.Polyline({path,strokeWeight:5,strokeColor:'#d4460a',strokeOpacity:.8,strokeStyle:'solid',map:_map});
   _map.setBounds(bounds);
+
+  // 구간별 실제 도로 경로
+  for(let i=0;i<allPts.length-1;i++){
+    const path = await getRoadPath(allPts[i], allPts[i+1]);
+    if(path&&path.length>0){
+      const pl=new kakao.maps.Polyline({
+        path, strokeWeight:5, strokeColor:'#d4460a',
+        strokeOpacity:.85, strokeStyle:'solid', map:_map
+      });
+      _markers.push(pl);
+    } else {
+      // 실패 시 직선으로 대체 (점선)
+      const pl=new kakao.maps.Polyline({
+        path:[new kakao.maps.LatLng(allPts[i].lat,allPts[i].lng),
+              new kakao.maps.LatLng(allPts[i+1].lat,allPts[i+1].lng)],
+        strokeWeight:4, strokeColor:'#d4460a',
+        strokeOpacity:.5, strokeStyle:'dashed', map:_map
+      });
+      _markers.push(pl);
+    }
+  }
 }
 
 function clearMarkers() {
