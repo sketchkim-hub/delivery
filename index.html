@@ -286,7 +286,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   .panel-mid { flex-direction:column; }
   .panel-right { flex-direction:column; }
   .mob-tab-bar { display:block; }
-  #kakaoMap { height:45vh !important; flex-shrink:0; }
+  #kakaoMap { height:48vh !important; flex-shrink:0; }
   .row2 { grid-template-columns:1fr; }
   .field input, .field select { padding:11px 12px; font-size:1rem; }
   .gu-btn { padding:12px 3px; font-size:.82rem; }
@@ -832,9 +832,22 @@ let _map=null, _markers=[], _polyline=null;
 function initMap() {
   const c=document.getElementById('kakaoMap');
   if(!c) return;
-  _map = new kakao.maps.Map(c,{center:new kakao.maps.LatLng(36.3279,127.4276),level:7});
+  // 문창전통시장 중심, 레벨 5 (동네 수준)
+  _map = new kakao.maps.Map(c,{center:new kakao.maps.LatLng(36.3279,127.4276),level:5});
   _markers=[]; _polyline=null;
-  geocodeAddr(DEPART.addr).then(r=>{ if(r){DEPART.lat=r.lat;DEPART.lng=r.lng;} });
+  // 출발지 좌표 미리 변환
+  geocodeAddr(DEPART.addr).then(r=>{
+    if(r){
+      DEPART.lat=r.lat; DEPART.lng=r.lng;
+      // 출발지 마커 표시
+      const pos=new kakao.maps.LatLng(r.lat,r.lng);
+      _map.setCenter(pos);
+      const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
+        content:`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 문창전통시장</div>`
+      });
+      _markers.push(ov);
+    }
+  });
 }
 
 function geocodeAddr(addr) {
@@ -1114,7 +1127,18 @@ function mobTab(idx) {
   ['t0','t1','t2'].forEach((id,i)=>{
     document.getElementById(id).classList.toggle('on', i===idx);
   });
-  if(idx===2) setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); },200);
+  if(idx===2) {
+    setTimeout(()=>{
+      if(_map) {
+        kakao.maps.event.trigger(_map,'resize');
+        // 마커가 없으면 문창전통시장 중심으로
+        if(_markers.length===0 && DEPART.lat) {
+          _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
+          _map.setLevel(5);
+        }
+      }
+    },200);
+  }
 }
 
 // ════════════════════════════════════
