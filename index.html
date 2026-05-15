@@ -1542,6 +1542,25 @@ function calcTSP(points) {
 async function calcOptimalRoute() {
   if(!rows.length) return toast('배송 목록이 없습니다','err');
 
+  // 카카오맵 로드 확인
+  if(!window.kakao || !window.kakao.maps || !window.kakao.maps.services) {
+    const routeList = document.getElementById('routeList');
+    if(window.innerWidth <= 768) switchTab('map');
+    routeList.innerHTML = `<div style="text-align:center;padding:30px;color:var(--accent);">
+      <div style="font-size:2rem;margin-bottom:10px;">⚠️</div>
+      <b>카카오맵 연결 안 됨</b><br><br>
+      <small style="color:var(--muted);line-height:1.8;">
+      아래 중 하나를 확인해 주세요:<br>
+      1. 인터넷 연결 상태 확인<br>
+      2. 카카오 콘솔 → 카카오맵 →<br>
+      &nbsp;&nbsp;Web 플랫폼에<br>
+      &nbsp;&nbsp;<b>https://sketchkim-hub.github.io</b><br>
+      &nbsp;&nbsp;등록 여부 확인<br>
+      3. 페이지 새로고침 후 재시도
+      </small></div>`;
+    return;
+  }
+
   const targets = rows.filter(r => r.groupFirst || !r.groupId);
   if(!targets.length) return toast('배송 목록이 없습니다','err');
 
@@ -1559,9 +1578,24 @@ async function calcOptimalRoute() {
     if(dep) { DEPART.lat = dep.lat; DEPART.lng = dep.lng; }
   }
 
-  // 배송지 주소 → 좌표 변환
+  // 주소 정제 함수 - 아파트 동호수 등 제거하여 인식률 향상
+  function cleanAddr(addr) {
+    // "대전광역시" 또는 "대전시" 중복 제거
+    let a = addr.replace(/^대전(광역시|시)?\s*/,'');
+    // 아파트 동/호 제거 (예: "110동 205호" → 제거)
+    a = a.replace(/\s*\d+동\s*\d*호?/g,'');
+    // 아파트명만 남기기 위해 동 이름까지만 사용
+    return '대전광역시 ' + a.trim();
+  }
+
+  // 배송지 주소 → 좌표 변환 (원본 → 정제 순으로 시도)
   const results = await Promise.all(
-    targets.map(r => geocodeAddr('대전광역시 ' + r.addr))
+    targets.map(async r => {
+      const original = await geocodeAddr('대전광역시 ' + r.addr);
+      if(original) return original;
+      // 실패 시 주소 정제 후 재시도
+      return await geocodeAddr(cleanAddr(r.addr));
+    })
   );
 
   const delivPoints = results.map((res, i) => res
@@ -1572,8 +1606,16 @@ async function calcOptimalRoute() {
   const failed = targets.length - delivPoints.length;
 
   if(!delivPoints.length) {
-    routeList.innerHTML = `<div style="text-align:center;padding:30px;color:var(--accent);">
-      주소 변환에 실패했습니다.<br><small>정확한 도로명/지번 주소를 입력해 주세요</small></div>`;
+    const failedAddrs = targets.map(r => r.addr).join('<br>');
+    routeList.innerHTML = `<div style="text-align:center;padding:20px;color:var(--accent);">
+      <div style="font-size:1.5rem;margin-bottom:8px;">❌</div>
+      <b>주소 변환 실패</b><br><br>
+      <small style="color:var(--muted);text-align:left;display:block;line-height:1.8;">
+      아래 주소를 도로명 주소로<br>바꿔보세요:<br><br>
+      <b>${failedAddrs}</b><br><br>
+      예) 동구 용전동<br>
+      → 동구 용전로 123
+      </small></div>`;
     return;
   }
 
