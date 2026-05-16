@@ -986,12 +986,12 @@ async function calcRoute() {
   toast(`✅ ${delivOnly.length}건 최적 동선 완료`,'ok');
 }
 
-// ── 동선 목록 렌더 (순서 조정 포함) ──
+// ── 동선 목록 렌더 (▲▼ 순서 조정 + 배송완료 버튼) ──
 function renderRouteList() {
   const rt=window._optRoute; const bad=window._badList||[];
   if(!rt||!rt.points.length) return;
   const pts=rt.points;
-  const maxManual=8; // 수동 조정 최대 8개
+  const maxManual=15;
   const canOrder=pts.length<=maxManual;
 
   const rl=document.getElementById('routeList');
@@ -1007,20 +1007,32 @@ function renderRouteList() {
     </div>` +
     pts.map((p,idx)=>{
       const r=p.row;
+      const done=p.done||false;
       const goods=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
       const upDis  = idx===0 ? 'disabled' : '';
       const downDis= idx===pts.length-1 ? 'disabled' : '';
-      return `<div class="route-card route-card-wrap" id="rc_${idx}">
+      const doneStyle = done ? 'opacity:.45;background:#f3f4f6;' : '';
+      const doneText  = done ? 'text-decoration:line-through;color:var(--muted);' : '';
+      return `<div class="route-card route-card-wrap" id="rc_${idx}" style="${doneStyle}">
         ${canOrder?`<div class="order-btns">
-          <button class="ord-btn" onclick="moveRoute(${idx},-1)" ${upDis} title="위로">▲</button>
-          <button class="ord-btn" onclick="moveRoute(${idx},+1)" ${downDis} title="아래로">▼</button>
+          <button class="ord-btn" onclick="moveRoute(${idx},-1)" ${upDis} ${done?'disabled':''} title="위로">▲</button>
+          <button class="ord-btn" onclick="moveRoute(${idx},+1)" ${downDis} ${done?'disabled':''} title="아래로">▼</button>
         </div>`:''}
-        <div class="route-num">${idx+1}</div>
-        <div class="route-info">
-          <div class="route-name">${r.store} · ${r.name}</div>
-          <div class="route-addr">📍 ${r.addr}</div>
+        <div class="route-num" style="${done?'background:#9ca3af;':''}">${done?'✓':idx+1}</div>
+        <div class="route-info" style="flex:1;">
+          <div class="route-name" style="${doneText}">${r.store} · ${r.name}</div>
+          <div class="route-addr" style="${doneText}">📍 ${r.addr}</div>
           <div class="route-goods">📦 ${goods}${r.phone?` <span style="color:var(--muted);">📞${r.phone}</span>`:''}</div>
         </div>
+        <button onclick="toggleDone(${idx})"
+          style="flex-shrink:0;margin-left:6px;padding:6px 8px;border:none;border-radius:7px;
+          font-size:.72rem;font-weight:800;font-family:inherit;cursor:pointer;
+          touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+          ${done
+            ? 'background:#f3f4f6;color:#9ca3af;'
+            : 'background:#dcfce7;color:#16a34a;'}">
+          ${done?'↩ 취소':'✅ 완료'}
+        </button>
       </div>`;
     }).join('') +
     (bad.length?`<div style="margin-top:8px;padding:10px;background:#fff5f2;border-radius:8px;font-size:.75rem;">
@@ -1031,6 +1043,55 @@ function renderRouteList() {
       <button class="kakao-btn" onclick="openKakaoApp()">🗺️ 카카오맵으로 열기</button>
       <button class="share-btn" onclick="shareRoute()">📤 기사님께 공유</button>
     </div>`;
+}
+
+// ── 배송 완료 토글 ──
+function toggleDone(idx) {
+  const pts=window._optRoute.points;
+  pts[idx].done = !pts[idx].done;
+  renderRouteList();
+  updateMapRouteDone();
+}
+
+// ── 완료 상태 반영한 지도 업데이트 ──
+async function updateMapRouteDone() {
+  if(!_map||!window._optRoute) return;
+  clearMarkers();
+  const allPts=[{lat:DEPART.lat,lng:DEPART.lng,isD:true},...window._optRoute.points];
+  const bounds=new kakao.maps.LatLngBounds();
+
+  // 마커 표시
+  allPts.forEach((p,idx)=>{
+    const pos=new kakao.maps.LatLng(p.lat,p.lng); bounds.extend(pos);
+    const done=p.done||false;
+    const m=new kakao.maps.Marker({position:pos,map:_map});
+    const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
+      content:p.isD
+        ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
+        :`<div style="background:${done?'#9ca3af':'#d4460a'};color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;">${done?'✓':idx}</div>`
+    });
+    _markers.push(m,ov);
+  });
+  _map.setBounds(bounds);
+
+  // 구간별 경로선 (완료 구간은 회색 점선)
+  for(let i=0;i<allPts.length-1;i++){
+    const isDone = allPts[i+1].done||false;
+    const path = await getRoadPath(allPts[i],allPts[i+1]);
+    const linePath = path||[
+      new kakao.maps.LatLng(allPts[i].lat,allPts[i].lng),
+      new kakao.maps.LatLng(allPts[i+1].lat,allPts[i+1].lng)
+    ];
+    const pl=new kakao.maps.Polyline({
+      path: linePath,
+      strokeWeight: isDone ? 3 : 5,
+      strokeColor:  isDone ? '#d1d5db' : '#d4460a',
+      strokeOpacity:isDone ? .5 : .85,
+      strokeStyle:  isDone ? 'dashed' : 'solid',
+      map: _map
+    });
+    _markers.push(pl);
+  }
 }
 
 // ── 순서 이동 ──
@@ -1124,15 +1185,111 @@ function resetRoute() {
 
 function openKakaoApp() {
   const rt=window._optRoute; if(!rt||!rt.points.length) return;
-  const dest=rt.points[rt.points.length-1];
-  const destName=encodeURIComponent(dest.row.name+' '+dest.row.addr);
-  const webUrl=`https://map.kakao.com/link/to/${destName},${dest.lat},${dest.lng}`;
-  if(/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-    let url=`kakaomap://route?sp=${DEPART.lat},${DEPART.lng}&ep=${dest.lat},${dest.lng}&by=CAR`;
-    rt.points.slice(0,-1).slice(0,3).forEach((p,i)=>{ url+=`&via${i+1}=${p.lat},${p.lng}`; });
+  const pts=rt.points;
+
+  // ── 방법 선택 모달 표시 ──
+  const existing=document.getElementById('mapChoiceModal');
+  if(existing) existing.remove();
+
+  const modal=document.createElement('div');
+  modal.id='mapChoiceModal';
+  modal.style.cssText=`position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:flex-end;justify-content:center;`;
+  modal.innerHTML=`
+    <div style="background:#fff;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;">
+      <div style="font-size:.95rem;font-weight:800;margin-bottom:14px;text-align:center;">🗺️ 지도 앱 선택</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button onclick="openNaverMap()" style="padding:14px;background:#03C75A;color:#fff;border:none;border-radius:10px;font-size:.9rem;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation;">
+          🟢 네이버 지도로 열기 (전체 ${pts.length}곳 경유)
+        </button>
+        <button onclick="openKakaoChunk(0)" style="padding:14px;background:#FEE500;color:#3C1E1E;border:none;border-radius:10px;font-size:.9rem;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation;">
+          🟡 카카오맵으로 열기 (3곳씩 분할)
+        </button>
+        <button onclick="document.getElementById('mapChoiceModal').remove()" style="padding:12px;background:#f3f4f6;color:#6b7280;border:none;border-radius:10px;font-size:.85rem;font-family:inherit;cursor:pointer;">
+          취소
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
+}
+
+// ── 네이버 지도 (경유지 제한 없음) ──
+function openNaverMap() {
+  document.getElementById('mapChoiceModal')?.remove();
+  const rt=window._optRoute; if(!rt||!rt.points.length) return;
+  const pts=rt.points;
+
+  // 네이버 지도 URL: start → goals(경유지) → end
+  const start=`${DEPART.lat},${DEPART.lng}`;
+  const startName=encodeURIComponent('문창전통시장');
+
+  // 네이버 지도는 경유지+목적지를 goal 파라미터로 받음
+  // 최대 5개 경유 가능 (실제로는 더 많이 되기도 함)
+  let url=`nmap://route/car?slat=${DEPART.lat}&slng=${DEPART.lng}&sname=${startName}`;
+
+  pts.forEach((p,i)=>{
+    const name=encodeURIComponent(p.row.name);
+    if(i<pts.length-1){
+      url+=`&v${i+1}lat=${p.lat}&v${i+1}lng=${p.lng}&v${i+1}name=${name}`;
+    } else {
+      url+=`&dlat=${p.lat}&dlng=${p.lng}&dname=${name}`;
+    }
+  });
+  url+=`&appname=delivery`;
+
+  // 웹 fallback URL (네이버 지도 웹)
+  const webParts=[
+    `start=${DEPART.lng},${DEPART.lat},${encodeURIComponent('문창전통시장')}`,
+    ...pts.map((p,i)=>`goal=${p.lng},${p.lat},${encodeURIComponent(p.row.name)}`)
+  ];
+  const webUrl=`https://map.naver.com/v5/directions/${webParts.join('/')}`;
+
+  if(/Android|iPhone|iPad/i.test(navigator.userAgent)){
     window.location.href=url;
     setTimeout(()=>window.open(webUrl,'_blank'),2000);
-  } else { window.open(webUrl,'_blank'); }
+  } else {
+    window.open(webUrl,'_blank');
+  }
+}
+
+// ── 카카오맵 (3개씩 분할) ──
+function openKakaoChunk(startIdx) {
+  document.getElementById('mapChoiceModal')?.remove();
+  const rt=window._optRoute; if(!rt||!rt.points.length) return;
+  const pts=rt.points;
+
+  // 3개씩 묶기: 출발지 + 경유 최대2 + 목적지
+  const chunk=pts.slice(startIdx, startIdx+3);
+  const origin = startIdx===0
+    ? {lat:DEPART.lat,lng:DEPART.lng,name:'문창전통시장'}
+    : pts[startIdx-1];
+
+  const dest=chunk[chunk.length-1];
+  const vias=chunk.slice(0,-1);
+  const destName=encodeURIComponent(dest.row.name);
+  const remaining=pts.length-(startIdx+chunk.length);
+
+  // 카카오맵 앱 URL
+  let appUrl=`kakaomap://route?sp=${origin.lat},${origin.lng}&ep=${dest.lat},${dest.lng}&by=CAR`;
+  vias.forEach((p,i)=>{ appUrl+=`&via${i+1}=${p.lat},${p.lng}`; });
+
+  // 웹 fallback
+  const webUrl=`https://map.kakao.com/link/to/${destName},${dest.lat},${dest.lng}`;
+
+  if(/Android|iPhone|iPad/i.test(navigator.userAgent)){
+    window.location.href=appUrl;
+    // 다음 구간이 있으면 안내
+    if(remaining>0){
+      setTimeout(()=>{
+        if(confirm(`📍 ${startIdx+chunk.length}번까지 완료!\n나머지 ${remaining}곳을 이어서 열까요?`)){
+          openKakaoChunk(startIdx+chunk.length);
+        }
+      },3000);
+    }
+  } else {
+    window.open(webUrl,'_blank');
+    if(remaining>0) toast(`💡 ${startIdx+chunk.length}번까지 표시됨. 나머지 ${remaining}곳은 다시 버튼을 눌러주세요.`,'');
+  }
 }
 
 function shareRoute() {
