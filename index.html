@@ -473,6 +473,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   <div class="divider"></div>
 
   <button class="add-btn" onclick="addRow()">＋ 목록에 추가</button>
+  <button id="cancelEditBtn" onclick="cancelEdit()" style="display:none;width:100%;padding:10px;background:#f3f4f6;color:#6b7280;border:none;border-radius:9px;font-size:.88rem;font-weight:700;font-family:inherit;cursor:pointer;margin-top:6px;">✕ 수정 취소</button>
 </div><!-- /panel-left -->
 
 <!-- ── 가운데: 목록 패널 ── -->
@@ -910,6 +911,7 @@ function renderTable() {
         <td>${grp&&!isF?'':'<span class="gu-tag '+r.gu+'">'+r.gu+'</span>'}</td>
         <td>
           ${isF||!grp?`<div style="display:flex;gap:2px;">
+            <button class="print-btn" onclick="editRow(${i})" title="수정" style="color:#2563eb;">✏️</button>
             <button class="print-btn" onclick="printLabel(${i})" title="라벨">🖨</button>
             <button class="del-btn" onclick="delRow(${i})" title="삭제">✕</button>
           </div>`:''}
@@ -921,7 +923,145 @@ function renderTable() {
   updateBadge();
 }
 
-function delRow(i) {
+// ════════════════════════════════════
+//  행 수정
+// ════════════════════════════════════
+let _editGroupId = null; // 수정 중인 groupId
+
+function editRow(i) {
+  const r = rows[i];
+  // 묶음이면 같은 groupId 전체 수집
+  const grpRows = r.groupId
+    ? rows.filter(x => x.groupId === r.groupId)
+    : [r];
+  const firstR = grpRows[0];
+
+  // ── 폼에 데이터 채우기 ──
+  document.getElementById('fDate').value  = firstR.date || '';
+  document.getElementById('fName').value  = firstR.name || '';
+  document.getElementById('fPhone').value = firstR.phone || '';
+  document.getElementById('fAmt').value   = firstR.amt !== '' ? firstR.amt : '';
+  document.getElementById('fBox').value   = firstR.box !== '-' ? firstR.box : '';
+
+  // 점포 선택
+  const si = stores.indexOf(firstR.store);
+  selStore = si >= 0 ? si : null;
+  renderStores();
+
+  // 지역구 선택
+  const guParts = (firstR.addr||'').split(' ');
+  const guVal   = guParts[0]||'';
+  const dongVal = guParts.slice(1).join(' ')||'';
+  selGuVal = Object.keys(GU_COLOR).includes(guVal) ? guVal : null;
+  document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+  const d = document.getElementById('guDisp');
+  if(selGuVal) {
+    const guBtn=document.querySelector(`.gu-btn[data-gu="${selGuVal}"]`);
+    if(guBtn) guBtn.classList.add('on');
+    d.textContent=selGuVal; d.style.color=GU_COLOR[selGuVal]; d.style.borderColor=GU_COLOR[selGuVal];
+  } else {
+    d.textContent='구 선택'; d.style.color='var(--muted)'; d.style.borderColor='var(--border)';
+  }
+  document.getElementById('fDong').value = dongVal;
+
+  // 배송시간
+  const ti = FIXED_TIMES.indexOf(firstR.time);
+  selTime = ti >= 0 ? ti : null;
+  document.getElementById('tBtn0').classList.toggle('on', selTime===0);
+  document.getElementById('tBtn1').classList.toggle('on', selTime===1);
+
+  // 물품 목록 (묶음의 각 행 = 각 물품)
+  goodsList = grpRows.map(g => ({ name: g.goods, item: g.item||'' }));
+  renderGoods();
+
+  // 수정 모드 상태 저장
+  _editGroupId = firstR.groupId || null;
+  _editRowIdx  = r.groupId ? null : i;
+
+  // 추가 버튼 → 수정 저장 버튼으로 변경
+  const addBtn = document.querySelector('.add-btn');
+  addBtn.textContent = '💾 수정 저장';
+  addBtn.style.background = '#2563eb';
+  addBtn.onclick = saveEdit;
+  document.getElementById('cancelEditBtn').style.display='block';
+
+  // 모바일: 입력 탭으로 이동
+  if(window.innerWidth<=768) mobTab(0);
+  toast('✏️ 수정 모드 — 내용 변경 후 저장하세요','');
+}
+
+let _editRowIdx = null;
+
+function saveEdit() {
+  const date  = document.getElementById('fDate').value;
+  const name  = document.getElementById('fName').value.trim();
+  const phone = document.getElementById('fPhone').value.trim();
+  const amt   = document.getElementById('fAmt').value;
+  const dong  = document.getElementById('fDong').value.trim();
+  const box   = document.getElementById('fBox').value;
+  const timeLabel = getTimeLabel();
+
+  if(!date)           return toast('날짜를 선택하세요','err');
+  if(selStore===null) return toast('점포를 선택하세요','err');
+  if(!name)           return toast('고객명을 입력하세요','err');
+  if(!goodsList.length) return toast('물품을 추가하세요','err');
+
+  const addr  = [selGuVal, dong].filter(Boolean).join(' ') || '-';
+  const store = stores[selStore];
+  const amtInt= amt ? Math.round(Number(amt)) : '';
+  const newGroupId = _editGroupId || Date.now();
+
+  // 기존 행 제거
+  if(_editGroupId) {
+    rows = rows.filter(x => x.groupId !== _editGroupId);
+  } else if(_editRowIdx !== null) {
+    rows.splice(_editRowIdx, 1);
+  }
+
+  // 수정된 행 삽입 (같은 위치에)
+  const insertAt = rows.length; // 일단 끝에 추가
+  goodsList.forEach((g, gi) => {
+    rows.splice(insertAt + gi, 0, {
+      seq: 0, date, store, name, phone,
+      goods: g.name, item: g.item||'-',
+      amt: gi===0 ? amtInt : '',
+      box: gi===0 ? (box||'-') : '',
+      addr, gu: selGuVal||'-', time: timeLabel,
+      groupId: newGroupId,
+      groupFirst: gi===0,
+      groupSize: goodsList.length
+    });
+  });
+
+  // 순번 재정렬
+  rows.forEach((x,idx)=>x.seq=idx+1);
+
+  // 수정 모드 해제
+  _editGroupId=null; _editRowIdx=null;
+  const addBtn=document.querySelector('.add-btn');
+  addBtn.textContent='＋ 목록에 추가';
+  addBtn.style.background='';
+  addBtn.onclick=addRow;
+  document.getElementById('cancelEditBtn').style.display='none';
+
+  saveRows(); renderTable(); updateSeq();
+  resetAll();
+  rebuildPreviewMarkers();
+  toast('✅ 수정 완료','ok');
+  if(window.innerWidth<=768) mobTab(1);
+}
+
+// 수정 모드 취소
+function cancelEdit() {
+  _editGroupId=null; _editRowIdx=null;
+  const addBtn=document.querySelector('.add-btn');
+  addBtn.textContent='＋ 목록에 추가';
+  addBtn.style.background='';
+  addBtn.onclick=addRow;
+  document.getElementById('cancelEditBtn').style.display='none';
+  resetAll();
+  toast('수정 취소됨','');
+}
   const r=rows[i];
   if(r.groupId && r.groupSize>1) {
     if(!confirm(`"${r.name}" 묶음 ${r.groupSize}개를 모두 삭제하시겠습니까?`)) return;
