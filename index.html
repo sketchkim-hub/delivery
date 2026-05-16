@@ -426,23 +426,9 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   <!-- 배송시간 -->
   <div>
     <div class="slabel">배송 시간</div>
-    <div class="time-grid" id="tGrid"></div>
-    <div class="time-add-row" style="display:flex;flex-direction:column;gap:5px;">
-      <div style="display:flex;gap:5px;">
-        <select id="tAmpm" style="flex:1;"><option value="오전">오전</option><option value="오후">오후</option></select>
-        <select id="tHour" style="flex:1;">
-          <option value="">시</option>
-          <option>0</option><option>1</option><option>2</option><option>3</option>
-          <option>4</option><option>5</option><option>6</option><option>7</option>
-          <option>8</option><option>9</option><option>10</option><option>11</option><option>12</option>
-        </select>
-        <select id="tMin" style="flex:1;">
-          <option value="00">00분</option><option value="10">10분</option>
-          <option value="20">20분</option><option value="30">30분</option>
-          <option value="40">40분</option><option value="50">50분</option>
-        </select>
-      </div>
-      <button class="plus-btn" onclick="addTime()" style="width:100%;">＋ 시간 추가</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+      <button id="tBtn0" class="tbtn" onclick="pickTimeFixed(0)">오전 9:10</button>
+      <button id="tBtn1" class="tbtn" onclick="pickTimeFixed(1)">오후 1:10</button>
     </div>
   </div>
 
@@ -615,11 +601,9 @@ async function initApp() {
 
   // Firebase에서 로드
   await loadStores();
-  await loadTimes();
   await loadRows(dateKey);
 
   renderStores();
-  renderTimes();
   renderTable();
   updateSeq();
   showSyncStatus('✅ 동기화 완료');
@@ -768,34 +752,24 @@ function renderGoods() {
 }
 
 // ════════════════════════════════════
-//  배송시간
+//  배송시간 (고정 2개)
 // ════════════════════════════════════
-function renderTimes() {
-  const g = document.getElementById('tGrid');
-  if(!times.length) { g.innerHTML=''; return; }
-  g.innerHTML = times.map((t,i)=>`
-    <div style="position:relative;">
-      <button class="tbtn${selTime===i?' on':''}" onclick="pickTime(${i})">${t}</button>
-      <button onclick="delTime(${i});event.stopPropagation();" style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:.6rem;color:rgba(0,0,0,.2);padding:1px 2px;touch-action:manipulation;">✕</button>
-    </div>`).join('');
+const FIXED_TIMES = ['오전 9:10', '오후 1:10'];
+
+function pickTimeFixed(idx) {
+  selTime = (selTime === idx) ? null : idx;
+  document.getElementById('tBtn0').classList.toggle('on', selTime === 0);
+  document.getElementById('tBtn1').classList.toggle('on', selTime === 1);
 }
-function pickTime(i) { selTime=(selTime===i)?null:i; renderTimes(); }
-function addTime() {
-  const ampm = document.getElementById('tAmpm').value;
-  const h    = document.getElementById('tHour').value;
-  const m    = document.getElementById('tMin').value;
-  if(!h) return toast('시간을 선택하세요','err');
-  const label = `${ampm} ${h}:${m}`;
-  if(times.includes(label)) return toast('이미 있는 시간입니다','err');
-  times.push(label); saveTimes();
-  selTime = times.length-1;
-  document.getElementById('tHour').value='';
-  renderTimes(); toast('✅ '+label+' 추가됨','ok');
+
+function getTimeLabel() {
+  return selTime !== null ? FIXED_TIMES[selTime] : '-';
 }
-function delTime(i) {
-  times.splice(i,1); saveTimes();
-  if(selTime===i) selTime=null; else if(selTime>i) selTime--;
-  renderTimes();
+
+function resetTimeUI() {
+  selTime = null;
+  document.getElementById('tBtn0').classList.remove('on');
+  document.getElementById('tBtn1').classList.remove('on');
 }
 
 // ════════════════════════════════════
@@ -808,7 +782,7 @@ function addRow() {
   const amt  = document.getElementById('fAmt').value;
   const dong = document.getElementById('fDong').value.trim();
   const box  = document.getElementById('fBox').value;
-  const timeLabel = selTime!==null ? times[selTime] : '-';
+  const timeLabel = getTimeLabel();
 
   if(!date)           return toast('날짜를 선택하세요','err');
   if(selStore===null) return toast('점포를 선택하세요','err');
@@ -856,8 +830,7 @@ function resetAll() {
   document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
   const d=document.getElementById('guDisp');
   d.textContent='구 선택'; d.style.color='var(--muted)'; d.style.borderColor='var(--border)';
-  // 배송시간
-  selTime=null; renderTimes();
+  resetTimeUI();
 }
 
 function resetFields() {
@@ -1395,43 +1368,67 @@ function openNaverMap() {
   }
 }
 
-// ── 카카오맵 (3개씩 분할) ──
+// ── 카카오맵 (3개씩 분할) - 구간 선택 UI ──
 function openKakaoChunk(startIdx) {
   document.getElementById('mapChoiceModal')?.remove();
   const rt=window._optRoute; if(!rt||!rt.points.length) return;
   const pts=rt.points;
 
-  // 3개씩 묶기: 출발지 + 경유 최대2 + 목적지
+  // 전체 구간 목록 모달 표시
+  const chunks=[];
+  for(let i=0;i<pts.length;i+=3) chunks.push(i);
+
+  if(chunks.length===1) {
+    // 구간 하나면 바로 열기
+    _openKakaoSeg(0, pts);
+    return;
+  }
+
+  // 여러 구간이면 선택 화면
+  const modal=document.createElement('div');
+  modal.id='kakaoSegModal';
+  modal.style.cssText=`position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9100;display:flex;align-items:flex-end;justify-content:center;`;
+  const segBtns=chunks.map((si,ci)=>{
+    const end=Math.min(si+3,pts.length);
+    const names=pts.slice(si,end).map((p,i)=>`${si+i+1}.${p.row.name}`).join(' → ');
+    return `<button onclick="_openKakaoSeg(${si},window._optRoute.points);document.getElementById('kakaoSegModal')?.remove();"
+      style="padding:12px;background:#FEE500;color:#3C1E1E;border:none;border-radius:10px;
+      font-size:.82rem;font-weight:700;font-family:inherit;cursor:pointer;text-align:left;touch-action:manipulation;">
+      📍 구간${ci+1}: ${names}
+    </button>`;
+  }).join('');
+
+  modal.innerHTML=`
+    <div style="background:#fff;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;max-height:70vh;overflow-y:auto;">
+      <div style="font-size:.9rem;font-weight:800;margin-bottom:12px;">🟡 카카오맵 구간 선택</div>
+      <div style="font-size:.75rem;color:#6b7280;margin-bottom:10px;">카카오맵은 3곳씩 나눠서 열립니다. 구간을 순서대로 눌러주세요.</div>
+      <div style="display:flex;flex-direction:column;gap:7px;">${segBtns}</div>
+      <button onclick="document.getElementById('kakaoSegModal')?.remove()"
+        style="width:100%;margin-top:10px;padding:11px;background:#f3f4f6;color:#6b7280;border:none;border-radius:10px;font-size:.83rem;font-family:inherit;cursor:pointer;">취소</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{ if(e.target===modal) modal.remove(); });
+}
+
+function _openKakaoSeg(startIdx, pts) {
   const chunk=pts.slice(startIdx, startIdx+3);
   const origin = startIdx===0
-    ? {lat:DEPART.lat,lng:DEPART.lng,name:'문창전통시장'}
+    ? {lat:DEPART.lat, lng:DEPART.lng}
     : pts[startIdx-1];
-
   const dest=chunk[chunk.length-1];
   const vias=chunk.slice(0,-1);
-  const destName=encodeURIComponent(dest.row.name);
-  const remaining=pts.length-(startIdx+chunk.length);
+  const destName=encodeURIComponent(dest.row.name+' '+dest.row.addr);
 
-  // 카카오맵 앱 URL
   let appUrl=`kakaomap://route?sp=${origin.lat},${origin.lng}&ep=${dest.lat},${dest.lng}&by=CAR`;
   vias.forEach((p,i)=>{ appUrl+=`&via${i+1}=${p.lat},${p.lng}`; });
 
-  // 웹 fallback
   const webUrl=`https://map.kakao.com/link/to/${destName},${dest.lat},${dest.lng}`;
 
   if(/Android|iPhone|iPad/i.test(navigator.userAgent)){
     window.location.href=appUrl;
-    // 다음 구간이 있으면 안내
-    if(remaining>0){
-      setTimeout(()=>{
-        if(confirm(`📍 ${startIdx+chunk.length}번까지 완료!\n나머지 ${remaining}곳을 이어서 열까요?`)){
-          openKakaoChunk(startIdx+chunk.length);
-        }
-      },3000);
-    }
+    setTimeout(()=>window.open(webUrl,'_blank'),2500);
   } else {
     window.open(webUrl,'_blank');
-    if(remaining>0) toast(`💡 ${startIdx+chunk.length}번까지 표시됨. 나머지 ${remaining}곳은 다시 버튼을 눌러주세요.`,'');
   }
 }
 
@@ -1530,29 +1527,38 @@ function mobTab(idx) {
     setTimeout(()=>{
       const c=document.getElementById('kakaoMap');
       if(!c||!window.kakao||!kakao.maps) return;
-      // 지도가 없거나 크기가 0이면 새로 생성
-      if(!_map || c.offsetWidth===0) {
+
+      if(!_map || c.offsetWidth===0 || c.offsetHeight===0) {
+        // 지도가 없거나 크기 0이면 새로 생성
         kakao.maps.load(()=>{
           _map = new kakao.maps.Map(c,{
-            center: new kakao.maps.LatLng(36.3279,127.4276),
+            center: new kakao.maps.LatLng(DEPART.lat, DEPART.lng),
             level: 5
           });
           _markers=[]; _polyline=null;
-          if(DEPART.lat) {
-            _map.setCenter(new kakao.maps.LatLng(DEPART.lat,DEPART.lng));
-          }
           kakao.maps.event.trigger(_map,'resize');
+          _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
+          _map.setLevel(5);
         });
       } else {
+        // resize 후 중심/레벨 강제 재설정
         kakao.maps.event.trigger(_map,'resize');
         setTimeout(()=>{
-          if(DEPART.lat && _markers.length<=1) {
-            _map.setCenter(new kakao.maps.LatLng(DEPART.lat,DEPART.lng));
+          // 마커가 있으면 전체 bounds, 없으면 문창전통시장 중심
+          if(_markers.length > 1) {
+            const bounds = new kakao.maps.LatLngBounds();
+            _markers.forEach(m=>{
+              if(m.getPosition) bounds.extend(m.getPosition());
+            });
+            if(!bounds.isEmpty()) _map.setBounds(bounds);
+          } else {
+            _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
             _map.setLevel(5);
           }
-        },100);
+          kakao.maps.event.trigger(_map,'resize');
+        }, 150);
       }
-    },300);
+    }, 300);
   }
 }
 
