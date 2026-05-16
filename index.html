@@ -310,18 +310,56 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 @media (max-width: 768px) {
   .layout { grid-template-columns:1fr; height:auto; }
   .hdr-date { display:none; }
+
+  /* 공통 패널 */
   .panel-left, .panel-mid, .panel-right {
     display:none;
-    position:fixed; top:52px; left:0; right:0; bottom:56px;
-    overflow-y:scroll; -webkit-overflow-scrolling:touch;
-    background:var(--card); z-index:10;
+    position:fixed;
+    top:52px; left:0; right:0; bottom:56px;
+    background:var(--card);
+    z-index:10;
   }
-  .panel-left  { padding:14px; flex-direction:column; gap:12px; }
   .panel-left.on, .panel-mid.on, .panel-right.on { display:flex; }
-  .panel-mid { flex-direction:column; }
-  .panel-right { flex-direction:column; }
+
+  /* 입력/목록 패널: 스크롤 가능 */
+  .panel-left {
+    padding:14px;
+    flex-direction:column;
+    gap:12px;
+    overflow-y:scroll;
+    -webkit-overflow-scrolling:touch;
+  }
+  .panel-mid {
+    flex-direction:column;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  /* 지도 패널: overflow 완전 제거 (iOS 카카오맵 터치 이슈 방지) */
+  .panel-right {
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* 지도 패널 내부 목록만 스크롤 */
+  .route-list {
+    flex:1;
+    overflow-y:scroll;
+    -webkit-overflow-scrolling:touch;
+    padding:10px 14px;
+  }
+
+  /* 카카오맵 - iOS에서 정확한 높이 강제 지정 */
+  #kakaoMap {
+    width:100% !important;
+    height:45vh !important;
+    min-height:200px !important;
+    flex-shrink:0 !important;
+    position:relative !important;
+    z-index:1 !important;
+  }
+
   .mob-tab-bar { display:block; }
-  #kakaoMap { height:48vh !important; flex-shrink:0; }
   .row2 { grid-template-columns:1fr; }
   .field input, .field select { padding:11px 12px; font-size:1rem; }
   .gu-btn { padding:12px 3px; font-size:.82rem; }
@@ -1524,41 +1562,39 @@ function mobTab(idx) {
     document.getElementById(id).classList.toggle('on', i===idx);
   });
   if(idx===2) {
+    // 패널이 표시된 후 지도 초기화
     setTimeout(()=>{
-      const c=document.getElementById('kakaoMap');
-      if(!c||!window.kakao||!kakao.maps) return;
+      const c = document.getElementById('kakaoMap');
+      if(!c || !window.kakao || !kakao.maps) return;
 
-      if(!_map || c.offsetWidth===0 || c.offsetHeight===0) {
-        // 지도가 없거나 크기 0이면 새로 생성
-        kakao.maps.load(()=>{
-          _map = new kakao.maps.Map(c,{
-            center: new kakao.maps.LatLng(DEPART.lat, DEPART.lng),
-            level: 5
-          });
-          _markers=[]; _polyline=null;
-          kakao.maps.event.trigger(_map,'resize');
+      // iOS Safari: 컨테이너 크기 강제 지정
+      c.style.width  = '100%';
+      c.style.height = '45vh';
+      c.style.minHeight = '200px';
+
+      kakao.maps.load(()=>{
+        // 항상 새로 생성 (iOS에서 가장 안정적)
+        _map = new kakao.maps.Map(c, {
+          center: new kakao.maps.LatLng(DEPART.lat, DEPART.lng),
+          level: 5
+        });
+        _markers = []; _polyline = null;
+
+        // resize 이벤트 두 번 발생 (iOS 대응)
+        kakao.maps.event.trigger(_map, 'resize');
+        setTimeout(()=>{
+          kakao.maps.event.trigger(_map, 'resize');
           _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
           _map.setLevel(5);
-        });
-      } else {
-        // resize 후 중심/레벨 강제 재설정
-        kakao.maps.event.trigger(_map,'resize');
-        setTimeout(()=>{
-          // 마커가 있으면 전체 bounds, 없으면 문창전통시장 중심
-          if(_markers.length > 1) {
-            const bounds = new kakao.maps.LatLngBounds();
-            _markers.forEach(m=>{
-              if(m.getPosition) bounds.extend(m.getPosition());
-            });
-            if(!bounds.isEmpty()) _map.setBounds(bounds);
-          } else {
-            _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
-            _map.setLevel(5);
+          // 기존 동선이 있으면 다시 그리기
+          if(window._optRoute && window._optRoute.points.length) {
+            updateMapRouteDone();
+          } else if(rows.length) {
+            rebuildPreviewMarkers();
           }
-          kakao.maps.event.trigger(_map,'resize');
-        }, 150);
-      }
-    }, 300);
+        }, 300);
+      });
+    }, 100);
   }
 }
 
