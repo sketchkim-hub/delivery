@@ -7,6 +7,41 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=443dbc1cfaf9df0e844d3e09c2fd2005&libraries=services"></script>
+<!-- Firebase SDK -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, set, get, onValue } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDOm2OngRf5DwGOBAyGYk7-rmClkHBMj50",
+  authDomain: "delivery-23728.firebaseapp.com",
+  databaseURL: "https://delivery-23728-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "delivery-23728",
+  storageBucket: "delivery-23728.firebasestorage.app",
+  messagingSenderId: "203200824872",
+  appId: "1:203200824872:web:2758175b0c8f253647971d"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ── Firebase 저장/로드 함수 전역 등록 ──
+window._fbSet = async (path, data) => {
+  try { await set(ref(db, path), data); return true; }
+  catch(e) { console.warn('Firebase 저장 실패:', e); return false; }
+};
+window._fbGet = async (path) => {
+  try {
+    const snap = await get(ref(db, path));
+    return snap.exists() ? snap.val() : null;
+  } catch(e) { console.warn('Firebase 로드 실패:', e); return null; }
+};
+window._fbWatch = (path, cb) => {
+  onValue(ref(db, path), snap => cb(snap.exists() ? snap.val() : null));
+};
+window._firebaseReady = true;
+window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -304,6 +339,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 <div class="hdr">
   <span>🚐</span>
   <div class="hdr-title">배송 <span>일일보고서</span></div>
+  <div id="syncStatus" style="display:none;font-size:.72rem;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:12px;white-space:nowrap;"></div>
   <div class="hdr-date" id="hdrDate"></div>
   <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선 계산</button>
   <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
@@ -504,32 +540,139 @@ let goodsList = [];
 let selStore = null, selGuVal = null, selTime = null;
 
 function todayKey() { return new Date().toISOString().slice(0,10); }
-function saveRows() { localStorage.setItem('ds2_rows_'+todayKey(), JSON.stringify(rows)); }
-function saveStores() { localStorage.setItem('ds2_stores', JSON.stringify(stores)); }
-function saveTimes() { localStorage.setItem('ds2_times', JSON.stringify(times)); }
+
+// ── 날짜별 행 저장 (Firebase + localStorage 이중 저장) ──
+async function saveRows() {
+  const key = document.getElementById('fDate').value || todayKey();
+  localStorage.setItem('ds2_rows_'+key, JSON.stringify(rows));
+  if(window._fbSet) await window._fbSet('rows/'+key, rows.length ? rows : null);
+}
+
+// ── 날짜별 행 로드 ──
+async function loadRows(dateKey) {
+  // Firebase 우선, 실패 시 localStorage
+  if(window._fbGet) {
+    const fbData = await window._fbGet('rows/'+dateKey);
+    if(fbData) {
+      rows = Array.isArray(fbData) ? fbData : Object.values(fbData);
+      localStorage.setItem('ds2_rows_'+dateKey, JSON.stringify(rows));
+      return;
+    }
+  }
+  rows = JSON.parse(localStorage.getItem('ds2_rows_'+dateKey) || '[]');
+}
+
+// ── 점포 저장 ──
+async function saveStores() {
+  localStorage.setItem('ds2_stores', JSON.stringify(stores));
+  if(window._fbSet) await window._fbSet('config/stores', stores);
+}
+
+// ── 점포 로드 ──
+async function loadStores() {
+  if(window._fbGet) {
+    const fbData = await window._fbGet('config/stores');
+    if(fbData) {
+      stores = Array.isArray(fbData) ? fbData : Object.values(fbData);
+      localStorage.setItem('ds2_stores', JSON.stringify(stores));
+      return;
+    }
+  }
+  stores = JSON.parse(localStorage.getItem('ds2_stores') || '[]');
+}
+
+// ── 배송시간 저장 ──
+async function saveTimes() {
+  localStorage.setItem('ds2_times', JSON.stringify(times));
+  if(window._fbSet) await window._fbSet('config/times', times);
+}
+
+// ── 배송시간 로드 ──
+async function loadTimes() {
+  if(window._fbGet) {
+    const fbData = await window._fbGet('config/times');
+    if(fbData) {
+      times = Array.isArray(fbData) ? fbData : Object.values(fbData);
+      localStorage.setItem('ds2_times', JSON.stringify(times));
+      return;
+    }
+  }
+  times = JSON.parse(localStorage.getItem('ds2_times') || '["오전 9:10","오후 1:10"]');
+}
 
 // ════════════════════════════════════
 //  초기화
 // ════════════════════════════════════
-window.addEventListener('DOMContentLoaded', () => {
+async function initApp() {
   const d = new Date();
-  document.getElementById('fDate').value = d.toISOString().slice(0,10);
+  const dateKey = d.toISOString().slice(0,10);
+  document.getElementById('fDate').value = dateKey;
   document.getElementById('hdrDate').textContent =
     d.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
 
-  rows = JSON.parse(localStorage.getItem('ds2_rows_'+todayKey()) || '[]');
+  // 동기화 상태 표시
+  showSyncStatus('⏳ 데이터 로드 중...');
+
+  // Firebase에서 로드
+  await loadStores();
+  await loadTimes();
+  await loadRows(dateKey);
 
   renderStores();
   renderTimes();
   renderTable();
   updateSeq();
+  showSyncStatus('✅ 동기화 완료');
+  setTimeout(()=>showSyncStatus(''), 2000);
+
+  // 날짜 변경 시 해당 날짜 데이터 로드
+  document.getElementById('fDate').addEventListener('change', async (e)=>{
+    const newDate = e.target.value;
+    showSyncStatus('⏳ '+newDate+' 로드 중...');
+    await loadRows(newDate);
+    renderTable(); updateSeq();
+    showSyncStatus('✅ '+newDate+' 로드 완료');
+    setTimeout(()=>showSyncStatus(''), 2000);
+  });
+
+  // Firebase 실시간 감지 (다른 기기에서 변경 시 자동 반영)
+  if(window._fbWatch) {
+    window._fbWatch('rows/'+dateKey, (data)=>{
+      if(!data) return;
+      const newRows = Array.isArray(data) ? data : Object.values(data);
+      // 현재 데이터와 다를 때만 업데이트
+      if(JSON.stringify(newRows) !== JSON.stringify(rows)) {
+        rows = newRows;
+        renderTable(); updateSeq();
+        showSyncStatus('🔄 다른 기기에서 업데이트됨');
+        setTimeout(()=>showSyncStatus(''), 2000);
+      }
+    });
+  }
 
   if(window.kakao && kakao.maps) kakao.maps.load(()=>{
     initMap();
-    // 저장된 데이터가 있으면 마커 복원
     if(rows.length) setTimeout(rebuildPreviewMarkers, 1000);
   });
-});
+}
+
+function showSyncStatus(msg) {
+  let el = document.getElementById('syncStatus');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// Firebase 준비 완료 후 또는 바로 실행
+if(window._firebaseReady) {
+  window.addEventListener('DOMContentLoaded', initApp);
+} else {
+  window.addEventListener('firebase-ready', initApp);
+  window.addEventListener('DOMContentLoaded', ()=>{
+    // Firebase 3초 내 미준비 시 localStorage로 fallback
+    setTimeout(()=>{ if(!window._firebaseReady) initApp(); }, 3000);
+  });
+}
 
 // ════════════════════════════════════
 //  점포
