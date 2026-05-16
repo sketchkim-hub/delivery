@@ -1062,6 +1062,8 @@ function cancelEdit() {
   resetAll();
   toast('수정 취소됨','');
 }
+
+function delRow(i) {
   const r=rows[i];
   if(r.groupId && r.groupSize>1) {
     if(!confirm(`"${r.name}" 묶음 ${r.groupSize}개를 모두 삭제하시겠습니까?`)) return;
