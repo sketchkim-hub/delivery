@@ -267,7 +267,34 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 .ord-btn:disabled { opacity:.25; cursor:default; }
 .reorder-tip { font-size:.7rem; color:var(--muted); text-align:center; padding:6px 0 2px; }
 
-/* ── 모달 ── */
+/* ── 이전 주문 탭 ── */
+.hist-tab {
+  padding:8px 4px; border:1.5px solid var(--border); border-radius:7px;
+  background:var(--surface); font-size:.75rem; font-weight:700;
+  font-family:inherit; cursor:pointer; transition:all .13s;
+  touch-action:manipulation;
+}
+.hist-tab.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+.hist-item {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+  margin-bottom:6px; cursor:pointer; transition:all .13s;
+  touch-action:manipulation;
+}
+.hist-item:hover { border-color:var(--accent); background:#fff5f2; }
+.hist-item-info { flex:1; }
+.hist-item-title { font-weight:700; font-size:.88rem; }
+.hist-item-sub { font-size:.72rem; color:var(--muted); margin-top:2px; }
+.hist-copy-btn {
+  padding:6px 12px; background:var(--accent); color:#fff; border:none;
+  border-radius:6px; font-size:.75rem; font-weight:700; font-family:inherit;
+  cursor:pointer; white-space:nowrap; touch-action:manipulation;
+}
+.hist-add-btn {
+  padding:6px 10px; background:var(--ink2); color:#fff; border:none;
+  border-radius:6px; font-size:.75rem; font-weight:700; font-family:inherit;
+  cursor:pointer; white-space:nowrap; touch-action:manipulation; margin-left:4px;
+}
 .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:500; align-items:center; justify-content:center; }
 .modal-bg.open { display:flex; }
 .modal { background:#fff; border-radius:14px; padding:22px; width:300px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,.2); }
@@ -379,6 +406,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   <div class="hdr-title">배송 <span>일일보고서</span></div>
   <div id="syncStatus" style="display:none;font-size:.72rem;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:12px;white-space:nowrap;"></div>
   <div class="hdr-date" id="hdrDate"></div>
+  <button class="hdr-btn" style="background:#7c3aed;" onclick="openHistoryModal()">📂 이전주문</button>
   <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선 계산</button>
   <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
 </div>
@@ -515,6 +543,28 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
     <button class="mob-tab on" id="t0" onclick="mobTab(0)"><span class="ti">✏️</span>입력</button>
     <button class="mob-tab" id="t1" onclick="mobTab(1)"><span class="ti">📋</span>목록<span class="mob-badge" id="mBadge" style="display:none;">0</span></button>
     <button class="mob-tab" id="t2" onclick="mobTab(2)"><span class="ti">🗺️</span>동선</button>
+  </div>
+</div>
+
+<!-- 이전 주문 불러오기 모달 -->
+<div class="modal-bg" id="historyModal">
+  <div class="modal" style="width:480px;max-height:85vh;display:flex;flex-direction:column;">
+    <h3>📂 이전 주문 불러오기</h3>
+    <p style="font-size:.78rem;color:var(--muted);margin-bottom:12px;">날짜를 선택하거나 자주 주문한 고객을 확인하세요</p>
+
+    <!-- 탭 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:12px;">
+      <button class="hist-tab on" id="htab0" onclick="switchHistTab(0)">📅 날짜 복사</button>
+      <button class="hist-tab" id="htab1" onclick="switchHistTab(1)">⭐ 단골 고객</button>
+      <button class="hist-tab" id="htab2" onclick="switchHistTab(2)">🕐 최근 전체</button>
+    </div>
+
+    <!-- 탭 내용 -->
+    <div id="histContent" style="flex:1;overflow-y:auto;min-height:200px;max-height:50vh;"></div>
+
+    <div class="modal-footer" style="margin-top:12px;">
+      <button class="btn-cancel" onclick="closeHistoryModal()">닫기</button>
+    </div>
   </div>
 </div>
 
@@ -660,14 +710,31 @@ async function initApp() {
 
   // Firebase 실시간 감지 (다른 기기에서 변경 시 자동 반영)
   if(window._fbWatch) {
+    // 배송 목록 실시간 감지
     window._fbWatch('rows/'+dateKey, (data)=>{
       if(!data) return;
       const newRows = Array.isArray(data) ? data : Object.values(data);
-      // 현재 데이터와 다를 때만 업데이트
       if(JSON.stringify(newRows) !== JSON.stringify(rows)) {
         rows = newRows;
         renderTable(); updateSeq();
         showSyncStatus('🔄 다른 기기에서 업데이트됨');
+        setTimeout(()=>showSyncStatus(''), 2000);
+      }
+    });
+
+    // 완료 상태 실시간 감지
+    window._fbWatch('done/'+dateKey, (doneData)=>{
+      if(!window._optRoute) return;
+      const pts = window._optRoute.points;
+      let changed = false;
+      pts.forEach((p,i)=>{
+        const nowDone = !!(doneData && doneData[i]);
+        if(p.done !== nowDone) { p.done = nowDone; changed = true; }
+      });
+      if(changed) {
+        renderRouteList();
+        updateMapRouteDone();
+        showSyncStatus('🔄 배송 완료 상태 동기화됨');
         setTimeout(()=>showSyncStatus(''), 2000);
       }
     });
@@ -1096,8 +1163,194 @@ function updateBadge() {
 }
 
 // ════════════════════════════════════
-//  엑셀 다운로드
+//  이전 주문 불러오기
 // ════════════════════════════════════
+let _histTab = 0;
+
+function openHistoryModal() {
+  document.getElementById('historyModal').classList.add('open');
+  switchHistTab(0);
+}
+function closeHistoryModal() {
+  document.getElementById('historyModal').classList.remove('open');
+}
+
+function switchHistTab(idx) {
+  _histTab = idx;
+  ['htab0','htab1','htab2'].forEach((id,i)=>{
+    document.getElementById(id).classList.toggle('on', i===idx);
+  });
+  renderHistContent();
+}
+
+async function renderHistContent() {
+  const el = document.getElementById('histContent');
+  el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--muted);">⏳ 로드 중...</div>`;
+
+  // Firebase에서 모든 날짜 데이터 가져오기
+  let allDates = {};
+  if(window._fbGet) {
+    const fbRows = await window._fbGet('rows');
+    if(fbRows) allDates = fbRows;
+  }
+  // localStorage도 병합
+  Object.keys(localStorage).forEach(k=>{
+    if(k.startsWith('ds2_rows_')) {
+      const date = k.replace('ds2_rows_','');
+      if(!allDates[date]) {
+        try { allDates[date] = JSON.parse(localStorage.getItem(k)); } catch(e){}
+      }
+    }
+  });
+
+  const today = document.getElementById('fDate').value || todayKey();
+  // 오늘 제외, 날짜 내림차순
+  const sortedDates = Object.keys(allDates)
+    .filter(d => d !== today && allDates[d] && allDates[d].length)
+    .sort((a,b) => b.localeCompare(a));
+
+  if(_histTab === 0) renderHistDates(sortedDates, allDates);
+  else if(_histTab === 1) renderHistRegulars(sortedDates, allDates);
+  else renderHistRecent(sortedDates, allDates);
+}
+
+// ── 탭0: 날짜별 복사 ──
+function renderHistDates(dates, allDates) {
+  const el = document.getElementById('histContent');
+  if(!dates.length) { el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);">저장된 이전 데이터가 없습니다</div>`; return; }
+
+  el.innerHTML = dates.map(d=>{
+    const data = allDates[d];
+    const cnt = [...new Set(data.filter(r=>r.groupFirst||!r.groupId).map(r=>r.name))].length;
+    const stores = [...new Set(data.map(r=>r.store))].join(', ');
+    return `<div class="hist-item">
+      <div class="hist-item-info">
+        <div class="hist-item-title">📅 ${d}</div>
+        <div class="hist-item-sub">👤 ${cnt}명 · 🏪 ${stores}</div>
+      </div>
+      <button class="hist-copy-btn" onclick="copyDateData('${d}')">오늘로 복사</button>
+    </div>`;
+  }).join('');
+}
+
+// ── 탭1: 단골 고객 ──
+function renderHistRegulars(dates, allDates) {
+  const el = document.getElementById('histContent');
+  // 고객별 주문 횟수 집계
+  const customerMap = {};
+  dates.forEach(d=>{
+    const data = allDates[d];
+    (data||[]).filter(r=>r.groupFirst||!r.groupId).forEach(r=>{
+      const key = `${r.store}__${r.name}__${r.addr}`;
+      if(!customerMap[key]) customerMap[key]={store:r.store,name:r.name,addr:r.addr,phone:r.phone||'',count:0,lastDate:d,sample:r};
+      customerMap[key].count++;
+    });
+  });
+
+  const regulars = Object.values(customerMap).sort((a,b)=>b.count-a.count).slice(0,20);
+  if(!regulars.length) { el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);">단골 고객 데이터가 없습니다</div>`; return; }
+
+  el.innerHTML = regulars.map((c,i)=>`
+    <div class="hist-item">
+      <div class="hist-item-info">
+        <div class="hist-item-title">${c.name} <span style="font-size:.7rem;color:var(--muted);">· ${c.store}</span></div>
+        <div class="hist-item-sub">📍 ${c.addr} · 주문 ${c.count}회 · 최근 ${c.lastDate}</div>
+      </div>
+      <button class="hist-add-btn" onclick="addRegularToForm(${i})">입력폼에 추가</button>
+    </div>`).join('');
+
+  // 단골 데이터 저장
+  window._regulars = regulars;
+}
+
+// ── 탭2: 최근 전체 복사 ──
+function renderHistRecent(dates, allDates) {
+  const el = document.getElementById('histContent');
+  if(!dates.length) { el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);">저장된 이전 데이터가 없습니다</div>`; return; }
+
+  const recentDate = dates[0];
+  const data = allDates[recentDate];
+  const customers = [...new Set(data.filter(r=>r.groupFirst||!r.groupId).map(r=>r.name))];
+
+  el.innerHTML = `
+    <div style="background:#f0f4ff;border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="font-weight:800;font-size:.88rem;margin-bottom:4px;">📅 가장 최근: ${recentDate}</div>
+      <div style="font-size:.78rem;color:var(--muted);">👤 ${customers.length}명: ${customers.join(', ')}</div>
+      <button onclick="copyDateData('${recentDate}')" style="margin-top:8px;width:100%;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:800;font-family:inherit;cursor:pointer;">
+        ✅ 오늘 날짜로 전체 복사
+      </button>
+    </div>` +
+    dates.slice(1,6).map(d=>{
+      const cnt=[...new Set(allDates[d].filter(r=>r.groupFirst||!r.groupId).map(r=>r.name))].length;
+      return `<div class="hist-item">
+        <div class="hist-item-info">
+          <div class="hist-item-title">📅 ${d}</div>
+          <div class="hist-item-sub">👤 ${cnt}명</div>
+        </div>
+        <button class="hist-copy-btn" onclick="copyDateData('${d}')">복사</button>
+      </div>`;
+    }).join('');
+}
+
+// ── 날짜 데이터를 오늘로 복사 ──
+async function copyDateData(fromDate) {
+  if(!confirm(`${fromDate} 데이터를 오늘 날짜(${document.getElementById('fDate').value})로 복사하시겠습니까?\n기존 오늘 데이터에 추가됩니다.`)) return;
+
+  let srcData = null;
+  if(window._fbGet) srcData = await window._fbGet('rows/'+fromDate);
+  if(!srcData) srcData = JSON.parse(localStorage.getItem('ds2_rows_'+fromDate)||'[]');
+  if(!srcData||!srcData.length) return toast('복사할 데이터가 없습니다','err');
+
+  const today = document.getElementById('fDate').value || todayKey();
+  const baseSeq = rows.length;
+  const groupMap = {}; // 기존 groupId → 새 groupId 매핑
+
+  const newRows = (Array.isArray(srcData)?srcData:Object.values(srcData)).map((r,i)=>{
+    // groupId 재생성
+    if(r.groupId) {
+      if(!groupMap[r.groupId]) groupMap[r.groupId] = Date.now() + Math.random()*1000|0;
+      return { ...r, date:today, seq:baseSeq+i+1, groupId:groupMap[r.groupId] };
+    }
+    return { ...r, date:today, seq:baseSeq+i+1, groupId:Date.now()+i };
+  });
+
+  rows = [...rows, ...newRows];
+  rows.forEach((x,i)=>x.seq=i+1);
+  await saveRows();
+  renderTable(); updateSeq();
+  rebuildPreviewMarkers();
+  closeHistoryModal();
+  toast(`✅ ${fromDate} 데이터 복사 완료 (${newRows.length}건)`,'ok');
+}
+
+// ── 단골 고객을 입력폼에 채우기 ──
+function addRegularToForm(idx) {
+  const c = window._regulars[idx];
+  if(!c) return;
+  document.getElementById('fName').value  = c.name;
+  document.getElementById('fPhone').value = c.phone||'';
+
+  // 점포 선택
+  const si = stores.indexOf(c.store);
+  if(si>=0) { selStore=si; renderStores(); }
+
+  // 지역구/동 파싱
+  const parts = (c.addr||'').split(' ');
+  const guVal = parts[0]||'';
+  selGuVal = Object.keys(GU_COLOR).includes(guVal)?guVal:null;
+  document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+  const d=document.getElementById('guDisp');
+  if(selGuVal){
+    const gb=document.querySelector(`.gu-btn[data-gu="${selGuVal}"]`);
+    if(gb) gb.classList.add('on');
+    d.textContent=selGuVal;d.style.color=GU_COLOR[selGuVal];d.style.borderColor=GU_COLOR[selGuVal];
+  } else { d.textContent='구 선택';d.style.color='var(--muted)';d.style.borderColor='var(--border)'; }
+  document.getElementById('fDong').value = parts.slice(1).join(' ')||'';
+
+  closeHistoryModal();
+  if(window.innerWidth<=768) mobTab(0);
+  toast(`✅ ${c.name} 정보 입력됨 — 물품/금액을 입력하세요`,'ok');
+}
 async function exportExcel() {
   if(!rows.length) return toast('데이터가 없습니다','err');
   const date = document.getElementById('fDate').value.replace(/-/g,'');
@@ -1273,6 +1526,15 @@ async function calcRoute() {
   window._optRoute={depart:DEPART,points:delivOnly};
   window._badList=bad;
 
+  // Firebase에서 기존 완료 상태 복원
+  const dateKey2 = document.getElementById('fDate').value || todayKey();
+  if(window._fbGet) {
+    const doneData = await window._fbGet('done/'+dateKey2);
+    if(doneData) {
+      delivOnly.forEach((p,i)=>{ p.done = !!(doneData[i]); });
+    }
+  }
+
   // 도로 경로로 지도 그리기
   toast('🗺️ 도로 경로 계산 중...','');
   await updateMapRoute();
@@ -1342,9 +1604,23 @@ function renderRouteList() {
 }
 
 // ── 배송 완료 토글 ──
-function toggleDone(idx) {
-  const pts=window._optRoute.points;
+// ── 배송 완료 토글 (Firebase 실시간 동기화) ──
+async function toggleDone(idx) {
+  if(!window._optRoute) return;
+  const pts = window._optRoute.points;
   pts[idx].done = !pts[idx].done;
+
+  // Firebase에 완료 상태 저장
+  const dateKey = document.getElementById('fDate').value || todayKey();
+  const doneStatus = {};
+  pts.forEach((p,i) => { if(p.done) doneStatus[i] = true; });
+
+  if(window._fbSet) {
+    await window._fbSet('done/'+dateKey, Object.keys(doneStatus).length ? doneStatus : null);
+    showSyncStatus('✅ 완료 상태 동기화됨');
+    setTimeout(()=>showSyncStatus(''), 1500);
+  }
+
   renderRouteList();
   updateMapRouteDone();
 }
