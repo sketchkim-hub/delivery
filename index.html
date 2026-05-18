@@ -240,6 +240,13 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 .route-btn { background:var(--accent); color:#fff; border:none; padding:7px 13px; border-radius:7px; font-size:.78rem; font-weight:700; font-family:inherit; cursor:pointer; margin-left:auto; }
 .route-btn:hover { background:var(--accent2); }
 .route-reset-btn { background:var(--surface); border:1px solid var(--border); color:var(--muted); padding:7px 9px; border-radius:7px; font-size:.78rem; font-family:inherit; cursor:pointer; }
+.filter-btn {
+  padding:5px 10px; border:1.5px solid var(--border); border-radius:6px;
+  background:#fff; font-size:.72rem; font-weight:700; font-family:inherit;
+  cursor:pointer; touch-action:manipulation; transition:all .13s;
+  color:var(--muted);
+}
+.filter-btn.on { background:var(--ink); color:#fff; border-color:var(--ink); }
 #kakaoMap { width:100%; height:45%; flex-shrink:0; }
 .route-list { flex:1; overflow-y:auto; padding:10px 14px; }
 .route-card { display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.8rem; }
@@ -526,8 +533,16 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 <div class="panel panel-right" id="pRight">
   <div class="map-toolbar">
     <span style="font-weight:800;font-size:.9rem;">🗺️ 최적 배송 동선</span>
-    <button class="route-btn" onclick="calcRoute()">🚗 동선 계산</button>
     <button class="route-reset-btn" onclick="resetRoute()">↺</button>
+    <button class="route-btn" onclick="calcRoute()">🚗 동선 계산</button>
+  </div>
+  <!-- 시간 필터 -->
+  <div style="display:flex;gap:5px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface);">
+    <span style="font-size:.72rem;color:var(--muted);align-self:center;margin-right:2px;">필터:</span>
+    <button id="filterAll"   class="filter-btn on"  onclick="setRouteFilter('all')">전체</button>
+    <button id="filterAM"    class="filter-btn"     onclick="setRouteFilter('am')">오전 9:10</button>
+    <button id="filterPM"    class="filter-btn"     onclick="setRouteFilter('pm')">오후 1:10</button>
+    <span id="filterCount" style="margin-left:auto;font-size:.72rem;color:var(--muted);align-self:center;"></span>
   </div>
   <div id="kakaoMap"></div>
   <div class="route-list" id="routeList">
@@ -736,6 +751,27 @@ async function initApp() {
         updateMapRouteDone();
         showSyncStatus('🔄 배송 완료 상태 동기화됨');
         setTimeout(()=>showSyncStatus(''), 2000);
+      }
+    });
+
+    // 동선 순서 실시간 감지
+    window._fbWatch('route_order/'+dateKey, (orderData)=>{
+      if(!window._optRoute||!orderData) return;
+      const orderArr = Array.isArray(orderData) ? orderData : Object.values(orderData);
+      const pts = window._optRoute.points;
+      const reordered=[];
+      orderArr.forEach(o=>{
+        const found=pts.find(p=>p.row&&p.row.seq===o.rowSeq);
+        if(found){ found.done=o.done||false; reordered.push(found); }
+      });
+      pts.forEach(p=>{ if(!reordered.includes(p)) reordered.push(p); });
+      if(JSON.stringify(reordered.map(p=>p.row?.seq)) !==
+         JSON.stringify(pts.map(p=>p.row?.seq))) {
+        window._optRoute.points = reordered;
+        renderRouteList();
+        updateMapRouteDone();
+        showSyncStatus('🔄 동선 순서 동기화됨');
+        setTimeout(()=>showSyncStatus(''),2000);
       }
     });
   }
@@ -1389,8 +1425,32 @@ async function exportExcel() {
 }
 
 // ════════════════════════════════════
-//  카카오맵 & 동선
+//  시간 필터
 // ════════════════════════════════════
+let _routeFilter = 'all'; // 'all' | 'am' | 'pm'
+
+function setRouteFilter(f) {
+  _routeFilter = f;
+  ['filterAll','filterAM','filterPM'].forEach(id=>{
+    document.getElementById(id)?.classList.remove('on');
+  });
+  const map = {all:'filterAll',am:'filterAM',pm:'filterPM'};
+  document.getElementById(map[f])?.classList.add('on');
+
+  // 필터 변경 시 즉시 재계산
+  if(rows.length) calcRoute();
+}
+
+function getFilteredTargets() {
+  const targets = rows.filter(r=>r.groupFirst||!r.groupId);
+  if(_routeFilter==='all') return targets;
+  const keyword = _routeFilter==='am' ? '오전' : '오후';
+  const filtered = targets.filter(r=>(r.time||'').includes(keyword));
+  // 필터 건수 표시
+  const el=document.getElementById('filterCount');
+  if(el) el.textContent = filtered.length+'건';
+  return filtered;
+}
 let _map=null, _markers=[], _polyline=null;
 let _previewMarkers = []; // 입력 단계 미리보기 마커
 
@@ -1500,8 +1560,21 @@ async function calcRoute() {
   clearPreviewMarkers(); // 미리보기 마커 제거 후 도로 경로로 교체
 
   const rl=document.getElementById('routeList');
-  const targets=rows.filter(r=>r.groupFirst||!r.groupId);
-  rl.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);"><div style="font-size:1.3rem;">⏳</div>주소 변환 중...(${targets.length}건)</div>`;
+  const targets = getFilteredTargets();
+
+  // 필터 안내
+  const filterLabel = _routeFilter==='am' ? '오전 9:10' : _routeFilter==='pm' ? '오후 1:10' : '전체';
+  if(!targets.length) {
+    rl.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);">
+      <div style="font-size:1.5rem;margin-bottom:8px;">📭</div>
+      <b>[${filterLabel}] 배송 건수가 없습니다</b><br>
+      <small style="color:var(--muted);">다른 필터를 선택하거나 배송을 추가해 주세요</small>
+    </div>`;
+    return;
+  }
+
+  document.getElementById('filterCount').textContent = targets.length+'건';
+  rl.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);"><div style="font-size:1.3rem;">⏳</div>${filterLabel} 주소 변환 중...(${targets.length}건)</div>`;
 
   if(!DEPART.lat){const dep=await geocodeAddr(DEPART.addr);if(dep){DEPART.lat=dep.lat;DEPART.lng=dep.lng;}}
 
@@ -1526,12 +1599,32 @@ async function calcRoute() {
   window._optRoute={depart:DEPART,points:delivOnly};
   window._badList=bad;
 
-  // Firebase에서 기존 완료 상태 복원
   const dateKey2 = document.getElementById('fDate').value || todayKey();
+
+  // Firebase에서 저장된 동선 순서 복원
   if(window._fbGet) {
-    const doneData = await window._fbGet('done/'+dateKey2);
-    if(doneData) {
-      delivOnly.forEach((p,i)=>{ p.done = !!(doneData[i]); });
+    const savedOrder = await window._fbGet('route_order/'+dateKey2);
+    if(savedOrder) {
+      const orderArr = Array.isArray(savedOrder) ? savedOrder : Object.values(savedOrder);
+      // 저장된 순서대로 points 재정렬
+      const reordered = [];
+      orderArr.forEach(o=>{
+        const found = delivOnly.find(p=>p.row&&p.row.seq===o.rowSeq);
+        if(found) { found.done=o.done||false; reordered.push(found); }
+      });
+      // 순서에 없는 항목은 끝에 추가
+      delivOnly.forEach(p=>{
+        if(!reordered.includes(p)) reordered.push(p);
+      });
+      window._optRoute.points = reordered;
+      showSyncStatus('✅ 저장된 동선 순서 복원됨');
+      setTimeout(()=>showSyncStatus(''),2000);
+    } else {
+      // Firebase에서 완료 상태만 복원
+      const doneData = await window._fbGet('done/'+dateKey2);
+      if(doneData) {
+        delivOnly.forEach((p,i)=>{ p.done = !!(doneData[i]); });
+      }
     }
   }
 
@@ -1556,6 +1649,7 @@ function renderRouteList() {
   rl.innerHTML=`
     <div style="font-size:.75rem;color:var(--muted);padding:6px 0 4px;display:flex;align-items:center;gap:6px;">
       <span>✅ ${pts.length}건 최적 순서</span>
+      ${_routeFilter!=='all'?`<span style="background:var(--ink);color:#fff;padding:1px 7px;border-radius:10px;font-size:.68rem;">${_routeFilter==='am'?'오전':'오후'}</span>`:''}
       ${bad.length?`<span style="color:var(--accent);">${bad.length}건 실패</span>`:''}
       ${canOrder?`<span style="margin-left:auto;font-size:.68rem;color:var(--muted);">↑↓ 순서 조정 가능</span>`:''}
     </div>
@@ -1667,20 +1761,37 @@ async function updateMapRouteDone() {
 }
 
 // ── 순서 이동 ──
-function moveRoute(idx, dir) {
+async function moveRoute(idx, dir) {
   const pts=window._optRoute.points;
   const newIdx=idx+dir;
   if(newIdx<0||newIdx>=pts.length) return;
-  // swap
   [pts[idx],pts[newIdx]]=[pts[newIdx],pts[idx]];
-  // 지도 경로 업데이트
+
+  // Firebase에 동선 순서 저장
+  await saveRouteOrder();
+
   updateMapRoute();
   renderRouteList();
-  // 이동한 항목으로 스크롤
   setTimeout(()=>{
     const el=document.getElementById(`rc_${newIdx}`);
     if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});
   },50);
+}
+
+// ── 동선 순서 저장 ──
+async function saveRouteOrder() {
+  if(!window._optRoute||!window._fbSet) return;
+  const dateKey = document.getElementById('fDate').value || todayKey();
+  // 좌표+row 인덱스만 저장 (최소한의 데이터)
+  const order = window._optRoute.points.map(p=>({
+    lat: p.lat, lng: p.lng,
+    rowSeq: p.row ? p.row.seq : null,
+    rowName: p.row ? p.row.name : null,
+    done: p.done||false
+  }));
+  await window._fbSet('route_order/'+dateKey, order);
+  showSyncStatus('✅ 동선 순서 저장됨');
+  setTimeout(()=>showSyncStatus(''),1500);
 }
 
 // ── 지도 경로만 업데이트 ──
