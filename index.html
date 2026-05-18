@@ -1114,15 +1114,19 @@ function saveEdit() {
   const amtInt= amt ? Math.round(Number(amt)) : '';
   const newGroupId = _editGroupId || Date.now();
 
-  // 기존 행 제거
+  // 기존 행의 위치 기억
+  let insertAt = rows.length; // 기본값: 끝
   if(_editGroupId) {
+    // 묶음의 첫 번째 행 위치 찾기
+    insertAt = rows.findIndex(x => x.groupId === _editGroupId);
+    if(insertAt < 0) insertAt = rows.length;
     rows = rows.filter(x => x.groupId !== _editGroupId);
   } else if(_editRowIdx !== null) {
+    insertAt = _editRowIdx;
     rows.splice(_editRowIdx, 1);
   }
 
-  // 수정된 행 삽입 (같은 위치에)
-  const insertAt = rows.length; // 일단 끝에 추가
+  // 원래 위치에 삽입
   goodsList.forEach((g, gi) => {
     rows.splice(insertAt + gi, 0, {
       seq: 0, date, store, name, phone,
@@ -1390,9 +1394,33 @@ function addRegularToForm(idx) {
 async function exportExcel() {
   if(!rows.length) return toast('데이터가 없습니다','err');
   const date = document.getElementById('fDate').value.replace(/-/g,'');
+
+  // 배송시간 기준 정렬 (오전 → 오후 순, 같은 시간은 기존 순번 유지)
+  const timeOrder = t => {
+    if(!t||t==='-') return 99;
+    if(t.includes('오전')) return 0;
+    if(t.includes('오후')) return 1;
+    return 99;
+  };
+  // 묶음 단위로 정렬 (묶음 내부 순서는 유지)
+  const groupFirst = rows.filter(r=>r.groupFirst||!r.groupId);
+  groupFirst.sort((a,b)=>{
+    const to = timeOrder(a.time)-timeOrder(b.time);
+    if(to!==0) return to;
+    return a.seq-b.seq;
+  });
+  // 정렬된 순서로 전체 rows 재구성
+  const sortedRows=[];
+  groupFirst.forEach(r=>{
+    if(r.groupId) sortedRows.push(...rows.filter(x=>x.groupId===r.groupId));
+    else sortedRows.push(r);
+  });
+  // 엑셀용 순번 재부여
+  sortedRows.forEach((r,i)=>r._excelSeq=i+1);
+
   const header = ['순번','날짜','배송시간','점포','고객명','물품','주소','금액','품목','상자','지역구'];
-  const data = [header, ...rows.map(r=>[
-    r.seq, r.date, r.time, r.store, r.name, r.goods, r.addr,
+  const data = [header, ...sortedRows.map(r=>[
+    r._excelSeq, r.date, r.time, r.store, r.name, r.goods, r.addr,
     r.amt!==''&&r.amt!==undefined?Math.round(Number(r.amt)):'',
     r.item&&r.item!=='-'?r.item:'',
     r.box!=='-'&&r.box!==''?Number(r.box):'', r.gu
