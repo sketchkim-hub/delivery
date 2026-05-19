@@ -1670,8 +1670,8 @@ function renderRouteList() {
   const rt=window._optRoute; const bad=window._badList||[];
   if(!rt||!rt.points.length) return;
   const pts=rt.points;
-  const maxManual=15;
-  const canOrder=pts.length<=maxManual;
+  const maxManual = pts.length; // 건수 제한 없음
+  const canOrder  = true;
 
   const rl=document.getElementById('routeList');
   rl.innerHTML=`
@@ -2030,16 +2030,31 @@ function _openKakaoSeg(startIdx, pts) {
 function shareRoute() {
   const rt=window._optRoute; if(!rt||!rt.points.length) return;
   const date=document.getElementById('fDate').value;
-  const txt=[
-    `🚐 ${date} 배송 동선 (${rt.points.length}건)`,
-    `📍 출발: 문창전통시장`, '',
-    ...rt.points.map((p,i)=>{
-      const r=p.row;
-      const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
-      return `${i+1}. ${r.name} (${r.addr})\n   📦 ${g}${r.phone?'\n   📞 '+r.phone:''}`;
-    }),
-    '', `🗺️ https://sketchkim-hub.github.io/delivery`
-  ].join('\n');
+  const pts=rt.points;
+
+  const lines=[
+    `🚐 ${date} 배송 동선 (${pts.length}건)`,
+    `📍 출발: 문창전통시장`, ''
+  ];
+
+  pts.forEach((p,i)=>{
+    const r=p.row;
+    const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
+
+    // 카카오맵 주소 검색 링크 (카카오맵 앱/웹 연결)
+    const kakaoLink=`https://map.kakao.com/link/search/${encodeURIComponent(r.addr)}`;
+
+    lines.push(`${i+1}. ${r.store} · ${r.name}`);
+    lines.push(`   📍 ${r.addr}`);
+    lines.push(`   🗺️ ${kakaoLink}`);
+    lines.push(`   📦 ${g}`);
+    if(r.phone) lines.push(`   📞 ${r.phone}`);
+    lines.push('');
+  });
+
+  lines.push(`🔗 배송 관리: https://sketchkim-hub.github.io/delivery`);
+
+  const txt=lines.join('\n');
   if(navigator.share) {
     navigator.share({title:`${date} 배송 동선`,text:txt}).catch(()=>copyText(txt));
   } else { copyText(txt); }
