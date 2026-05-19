@@ -2041,15 +2041,15 @@ function shareRoute() {
     const r=p.row;
     const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
 
-    // 카카오맵 주소 검색 링크 (카카오맵 앱/웹 연결)
-    const kakaoLink=`https://map.kakao.com/link/search/${encodeURIComponent(r.addr)}`;
+    // 주소에 카카오맵 링크 삽입 - 고객명 (주소 링크) 형식
+    const addrEnc = encodeURIComponent('대전광역시 '+r.addr);
+    const kakaoLink = `https://map.kakao.com/link/search/${addrEnc}`;
 
-    lines.push(`${i+1}. ${r.store} · ${r.name}`);
-    lines.push(`   📍 ${r.addr}`);
-    lines.push(`   🗺️ ${kakaoLink}`);
+    // 고객명 (주소링크) 형식으로 한 줄에 표시
+    lines.push(`${i+1}. ${r.name} (${r.addr} ${kakaoLink})`);
     lines.push(`   📦 ${g}`);
     if(r.phone) lines.push(`   📞 ${r.phone}`);
-    lines.push('');
+    lines.push(''); // 배송지 사이 빈 줄
   });
 
   lines.push(`🔗 배송 관리: https://sketchkim-hub.github.io/delivery`);
