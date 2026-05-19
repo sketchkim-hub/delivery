@@ -2041,9 +2041,9 @@ function shareRoute() {
     const r=p.row;
     const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
 
-    // 좌표 기반 네이버 지도 링크 (56자, 숫자만)
+    // 좌표 기반 카카오맵 링크 (숫자만, 깔끔)
     const mapLink = (p.lat && p.lng)
-      ? `https://map.naver.com/v5/?c=${p.lng},${p.lat},15,0,0,0,dh`
+      ? `https://map.kakao.com/link/map/배송지,${p.lat},${p.lng}`
       : null;
 
     lines.push(`${i+1}. ${r.store} · ${r.name}`);
