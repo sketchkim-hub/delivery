@@ -2041,13 +2041,13 @@ function shareRoute() {
     const r=p.row;
     const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
 
-    // 좌표 기반 카카오맵 링크 (가장 짧음 - 한글 인코딩 없음)
-    const kakaoLink = p.lat
-      ? `https://map.kakao.com/link/map/${p.lat},${p.lng}`
-      : `https://kko.to/search?q=${encodeURIComponent(r.addr)}`;
+    // 좌표 기반 네이버 지도 링크 (56자, 숫자만)
+    const mapLink = (p.lat && p.lng)
+      ? `https://map.naver.com/v5/?c=${p.lng},${p.lat},15,0,0,0,dh`
+      : null;
 
     lines.push(`${i+1}. ${r.store} · ${r.name}`);
-    lines.push(`   📍 ${r.addr} ${kakaoLink}`);
+    lines.push(`   📍 ${r.addr}${mapLink ? ' '+mapLink : ''}`);
     lines.push(`   📦 ${g}`);
     if(r.phone) lines.push(`   📞 ${r.phone}`);
     lines.push('');
