@@ -1832,6 +1832,12 @@ async function calcRoute() {
     toast('카카오맵 연결 실패. 인터넷 및 도메인 설정을 확인하세요','err');
     return;
   }
+  // 동선 계산 시 검색 마커 제거
+  if(_searchMarker)  { _searchMarker.setMap(null);  _searchMarker=null; }
+  if(_searchOverlay) { _searchOverlay.setMap(null); _searchOverlay=null; }
+  // 주소 미리보기 마커 제거
+  clearAddrPreview();
+
   if(window.innerWidth<=768) mobTab(2);
   clearPreviewMarkers(); // 미리보기 마커 제거 후 도로 경로로 교체
 
