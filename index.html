@@ -2041,12 +2041,13 @@ function shareRoute() {
     const r=p.row;
     const g=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
 
-    // 카카오맵 링크 - 한글 주소를 검색어로
-    const addrFull = '대전광역시 '+r.addr;
-    const kakaoLink = `https://map.kakao.com/link/search/${encodeURIComponent(addrFull)}`;
+    // 좌표 기반 카카오맵 링크 (가장 짧음 - 한글 인코딩 없음)
+    const kakaoLink = p.lat
+      ? `https://map.kakao.com/link/map/${p.lat},${p.lng}`
+      : `https://kko.to/search?q=${encodeURIComponent(r.addr)}`;
 
-    // 스크린샷 형식: "고객명 (한글주소링크)" - 카톡이 괄호 안 URL을 주소텍스트로 표시
-    lines.push(`${i+1}. ${r.name} (${r.addr} ${kakaoLink})`);
+    lines.push(`${i+1}. ${r.store} · ${r.name}`);
+    lines.push(`   📍 ${r.addr} ${kakaoLink}`);
     lines.push(`   📦 ${g}`);
     if(r.phone) lines.push(`   📞 ${r.phone}`);
     lines.push('');
