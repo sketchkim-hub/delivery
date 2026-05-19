@@ -840,7 +840,7 @@ function renderStores() {
 function pickStore(i) {
   selStore = (selStore===i) ? null : i;
   renderStores();
-  resetFields();
+  // 점포만 변경 - 다른 입력값은 유지 (초기화 제거)
 }
 function openStoreModal() {
   document.getElementById('storeModal').classList.add('open');
@@ -1605,7 +1605,7 @@ function selectSearchResult(name, addr, lat, lng) {
     });
   }
 
-  // 주소에서 구/동 파싱 → 입력폼 자동 채우기
+  // 주소에서 구/동 파싱
   const guList=['동구','중구','서구','대덕구','유성구'];
   const addrToUse = addr||name;
   let foundGu=null, foundDong='';
@@ -1617,6 +1617,7 @@ function selectSearchResult(name, addr, lat, lng) {
     foundDong=addrToUse.replace(/대전광역시?\s*/,'').replace(/대전\s*/,'').trim();
   }
 
+  // 입력폼에 지역구/동 채우기
   if(foundGu) {
     selGuVal=foundGu;
     document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
@@ -1627,8 +1628,72 @@ function selectSearchResult(name, addr, lat, lng) {
   }
   document.getElementById('fDong').value = foundDong;
 
+  // 점포 선택 팝업 표시
+  showStorePickPopup(name, foundGu, foundDong);
+}
+
+// ── 점포 선택 팝업 (지도 검색 후) ──
+function showStorePickPopup(searchName, gu, dong) {
+  const existing = document.getElementById('storePickPopup');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'storePickPopup';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9200;display:flex;align-items:flex-end;justify-content:center;';
+
+  const storeBtns = stores.length
+    ? stores.map((s,i)=>`
+        <button onclick="pickStoreFromMap(${i})"
+          style="padding:12px;background:${selStore===i?'var(--accent)':'var(--surface)'};
+          color:${selStore===i?'#fff':'var(--ink)'};
+          border:1.5px solid ${selStore===i?'var(--accent)':'var(--border)'};
+          border-radius:9px;font-size:.88rem;font-weight:700;font-family:inherit;
+          cursor:pointer;text-align:center;touch-action:manipulation;">
+          ${s}
+        </button>`).join('')
+    : `<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:10px;">
+        등록된 점포가 없습니다<br>
+        <button onclick="closeStorePickPopup();openStoreModal();"
+          style="margin-top:8px;padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:.82rem;font-family:inherit;cursor:pointer;">
+          ＋ 점포 추가
+        </button>
+      </div>`;
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;max-height:60vh;overflow-y:auto;">
+      <div style="font-weight:800;font-size:.9rem;margin-bottom:4px;">🏪 점포 선택</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px;">
+        📍 ${gu||''} ${dong} 검색 완료 — 어느 점포에서 배달하나요?
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;">
+        ${storeBtns}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeStorePickPopup();if(window.innerWidth<=768)mobTab(0);"
+          style="flex:1;padding:12px;background:var(--ink2);color:#fff;border:none;border-radius:9px;font-size:.85rem;font-weight:700;font-family:inherit;cursor:pointer;">
+          ✅ 점포 선택 없이 입력폼으로
+        </button>
+      </div>
+      <button onclick="closeStorePickPopup()"
+        style="width:100%;margin-top:8px;padding:10px;background:#f3f4f6;color:#6b7280;border:none;border-radius:9px;font-size:.83rem;font-family:inherit;cursor:pointer;">
+        취소
+      </button>
+    </div>`;
+
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e=>{ if(e.target===modal) closeStorePickPopup(); });
+}
+
+function pickStoreFromMap(i) {
+  selStore = i;
+  renderStores();
+  closeStorePickPopup();
   if(window.innerWidth<=768) mobTab(0);
-  toast(`✅ "${name}" 주소 입력폼에 채워졌습니다`,'ok');
+  toast(`✅ ${stores[i]} 선택됨 — 고객명·물품을 입력하세요`,'ok');
+}
+
+function closeStorePickPopup() {
+  document.getElementById('storePickPopup')?.remove();
 }
 
 document.addEventListener('click', e=>{
