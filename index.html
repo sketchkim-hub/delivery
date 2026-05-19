@@ -538,6 +538,22 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
     <button class="route-reset-btn" onclick="resetRoute()">↺</button>
     <button class="route-btn" onclick="calcRoute()">🚗 동선 계산</button>
   </div>
+
+  <!-- 주소 검색창 -->
+  <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:#f0f4ff;">
+    <div style="font-size:.7rem;font-weight:700;color:#2563eb;margin-bottom:5px;">🔍 주소 검색 → 입력폼 자동 채우기</div>
+    <div style="display:flex;gap:5px;">
+      <input type="text" id="mapSearchInput" placeholder="주소나 건물명 입력 (예: 대흥동 현대아파트)"
+        style="flex:1;border:1.5px solid #93c5fd;border-radius:7px;padding:8px 10px;font-size:.85rem;font-family:inherit;background:#fff;"
+        onkeydown="if(event.key==='Enter') searchMapAddr()">
+      <button onclick="searchMapAddr()"
+        style="padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:7px;font-size:.82rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;touch-action:manipulation;">
+        검색
+      </button>
+    </div>
+    <!-- 검색 결과 목록 -->
+    <div id="mapSearchResults" style="display:none;margin-top:6px;background:#fff;border:1px solid #93c5fd;border-radius:8px;max-height:180px;overflow-y:auto;"></div>
+  </div>
   <!-- 시간 필터 -->
   <div style="display:flex;gap:5px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface);">
     <span style="font-size:.72rem;color:var(--muted);align-self:center;margin-right:2px;">필터:</span>
@@ -1520,7 +1536,109 @@ function clearAddrPreview() {
   if(_addrPreviewMarker)  { _addrPreviewMarker.setMap(null);  _addrPreviewMarker=null; }
   if(_addrPreviewOverlay) { _addrPreviewOverlay.setMap(null); _addrPreviewOverlay=null; }
 }
-let _routeFilter = 'all'; // 'all' | 'am' | 'pm'
+// ════════════════════════════════════
+//  지도 주소 검색 → 입력폼 채우기
+// ════════════════════════════════════
+let _searchMarker = null, _searchOverlay = null;
+
+function searchMapAddr() {
+  const q = document.getElementById('mapSearchInput').value.trim();
+  if(!q) return toast('검색어를 입력하세요','err');
+  if(!window.kakao||!kakao.maps.services) return toast('카카오맵 로드 중...','err');
+
+  const ps = new kakao.maps.services.Places();
+  const center = new kakao.maps.LatLng(36.3504, 127.3845);
+  ps.keywordSearch(q, (result, status)=>{
+    if(status !== kakao.maps.services.Status.OK || !result.length) {
+      new kakao.maps.services.Geocoder().addressSearch('대전 '+q, (res2, st2)=>{
+        if(st2 === kakao.maps.services.Status.OK) {
+          showSearchResults(res2.map(r=>({
+            place_name: r.address_name,
+            address_name: r.address_name,
+            road_address_name: r.road_address?.address_name||'',
+            x: r.x, y: r.y
+          })));
+        } else {
+          const el=document.getElementById('mapSearchResults');
+          el.innerHTML=`<div style="padding:12px;text-align:center;color:var(--muted);font-size:.82rem;">검색 결과가 없습니다</div>`;
+          el.style.display='block';
+        }
+      });
+      return;
+    }
+    showSearchResults(result);
+  }, { location:center, radius:20000, sort:kakao.maps.services.SortBy.DISTANCE });
+}
+
+function showSearchResults(results) {
+  const el = document.getElementById('mapSearchResults');
+  el.style.display = 'block';
+  el.innerHTML = results.slice(0,8).map((r,i)=>{
+    const name = r.place_name || r.address_name;
+    const addr = r.road_address_name || r.address_name || '';
+    const lat=parseFloat(r.y), lng=parseFloat(r.x);
+    return `<div onclick="selectSearchResult('${name.replace(/'/g,"\\'")}','${addr.replace(/'/g,"\\'")}',${lat},${lng})"
+      style="padding:10px 12px;border-bottom:1px solid #e5e7eb;cursor:pointer;transition:background .1s;touch-action:manipulation;"
+      onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background=''">
+      <div style="font-weight:700;font-size:.85rem;color:var(--ink);">${name}</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:2px;">📍 ${addr}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectSearchResult(name, addr, lat, lng) {
+  document.getElementById('mapSearchResults').style.display='none';
+  document.getElementById('mapSearchInput').value='';
+
+  // 지도 이동 + 마커
+  if(_map) {
+    const pos = new kakao.maps.LatLng(lat, lng);
+    _map.setCenter(pos); _map.setLevel(3);
+    if(_searchMarker)  _searchMarker.setMap(null);
+    if(_searchOverlay) _searchOverlay.setMap(null);
+    _searchMarker  = new kakao.maps.Marker({position:pos,map:_map});
+    _searchOverlay = new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
+      content:`<div style="background:#2563eb;color:#fff;font-weight:900;font-size:11px;
+        padding:4px 10px;border-radius:12px;border:2px solid #fff;
+        box-shadow:0 2px 6px rgba(0,0,0,.3);margin-top:-38px;white-space:nowrap;
+        max-width:160px;overflow:hidden;text-overflow:ellipsis;">🔍 ${name}</div>`
+    });
+  }
+
+  // 주소에서 구/동 파싱 → 입력폼 자동 채우기
+  const guList=['동구','중구','서구','대덕구','유성구'];
+  const addrToUse = addr||name;
+  let foundGu=null, foundDong='';
+  guList.forEach(gu=>{ if(addrToUse.includes(gu)) foundGu=gu; });
+  if(foundGu) {
+    const idx=addrToUse.indexOf(foundGu)+foundGu.length;
+    foundDong=addrToUse.slice(idx).trim();
+  } else {
+    foundDong=addrToUse.replace(/대전광역시?\s*/,'').replace(/대전\s*/,'').trim();
+  }
+
+  if(foundGu) {
+    selGuVal=foundGu;
+    document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+    const gb=document.querySelector(`.gu-btn[data-gu="${foundGu}"]`);
+    if(gb) gb.classList.add('on');
+    const d=document.getElementById('guDisp');
+    d.textContent=foundGu; d.style.color=GU_COLOR[foundGu]; d.style.borderColor=GU_COLOR[foundGu];
+  }
+  document.getElementById('fDong').value = foundDong;
+
+  if(window.innerWidth<=768) mobTab(0);
+  toast(`✅ "${name}" 주소 입력폼에 채워졌습니다`,'ok');
+}
+
+document.addEventListener('click', e=>{
+  const el=document.getElementById('mapSearchResults');
+  if(el&&!el.contains(e.target)&&e.target.id!=='mapSearchInput') el.style.display='none';
+});
+
+// ════════════════════════════════════
+//  시간 필터
+// ════════════════════════════════════
 
 function setRouteFilter(f) {
   _routeFilter = f;
