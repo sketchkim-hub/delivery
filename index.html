@@ -1974,7 +1974,7 @@ function renderRouteList() {
       ${bad.map(b=>`<div style="color:var(--muted);margin-top:3px;">• ${b.row.name}: ${b.row.addr}</div>`).join('')}
     </div>`:'') +
     `<div class="action-btns">
-      <button class="kakao-btn" onclick="openKakaoApp()">🗺️ 카카오맵으로 열기</button>
+      <button class="kakao-btn" onclick="openKakaoApp()">🗺️ 맵으로 열기</button>
       <button class="share-btn" onclick="shareRoute()">📤 기사님께 공유</button>
     </div>`;
 }
@@ -2197,8 +2197,7 @@ function openNaverMap() {
   for(let i=0;i<remaining.length;i+=CHUNK) chunks.push(remaining.slice(i,i+CHUNK));
 
   if(chunks.length === 1) {
-    // 5개 이하면 바로 열기
-    _openNaverChunk(chunks[0]);
+    _openNaverChunk(chunks[0], null);  // 출발지: 문창전통시장
   } else {
     // 여러 구간이면 선택 모달
     const modal = document.createElement('div');
@@ -2208,10 +2207,12 @@ function openNaverMap() {
     const btns = chunks.map((chunk, ci)=>{
       const startIdx = ci * CHUNK;
       const names = chunk.map((p,i)=>`${startIdx+i+1}.${p.row.name}`).join(' → ');
-      return `<button onclick="_openNaverChunk(window._optRoute.points.filter(p=>!p.done).slice(${ci*CHUNK},${ci*CHUNK+CHUNK}));document.getElementById('naverChunkModal')?.remove();"
+      // 이전 구간 마지막 배송지를 출발지로 사용
+      const prevLast = ci===0 ? null : chunks[ci-1][chunks[ci-1].length-1];
+      return `<button onclick="_openNaverChunk(window._optRoute.points.filter(p=>!p.done).slice(${ci*CHUNK},${ci*CHUNK+CHUNK}), ${prevLast ? `{lat:${prevLast.lat},lng:${prevLast.lng},name:'${prevLast.row.name.replace(/'/g,"\\'")}'}` : 'null'});document.getElementById('naverChunkModal')?.remove();"
         style="padding:12px;background:#03C75A;color:#fff;border:none;border-radius:10px;
         font-size:.82rem;font-weight:700;font-family:inherit;cursor:pointer;text-align:left;touch-action:manipulation;">
-        📍 ${ci+1}구간 (${chunk.length}곳): ${names}
+        📍 ${ci+1}구간 (${chunk.length}곳): ${ci===0?'문창전통시장':chunks[ci-1][chunks[ci-1].length-1].row.name} → ... → ${chunk[chunk.length-1].row.name}
       </button>`;
     }).join('');
 
@@ -2231,10 +2232,15 @@ function openNaverMap() {
   }
 }
 
-function _openNaverChunk(pts) {
+function _openNaverChunk(pts, origin=null) {
   if(!pts||!pts.length) return;
-  const startName = encodeURIComponent('문창전통시장');
-  let appUrl = `nmap://route/car?slat=${DEPART.lat}&slng=${DEPART.lng}&sname=${startName}`;
+
+  // 출발지: 이전 구간 마지막 배송지 또는 문창전통시장
+  const startLat  = origin ? origin.lat  : DEPART.lat;
+  const startLng  = origin ? origin.lng  : DEPART.lng;
+  const startName = encodeURIComponent(origin ? origin.name : '문창전통시장');
+
+  let appUrl = `nmap://route/car?slat=${startLat}&slng=${startLng}&sname=${startName}`;
 
   pts.forEach((p,i)=>{
     const name = encodeURIComponent(p.row.name);
@@ -2247,7 +2253,7 @@ function _openNaverChunk(pts) {
   appUrl += `&appname=delivery`;
 
   const webParts = [
-    `start=${DEPART.lng},${DEPART.lat},${encodeURIComponent('문창전통시장')}`,
+    `start=${startLng},${startLat},${startName}`,
     ...pts.map(p=>`goal=${p.lng},${p.lat},${encodeURIComponent(p.row.name)}`)
   ];
   const webUrl = `https://map.naver.com/v5/directions/${webParts.join('/')}`;
