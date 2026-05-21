@@ -1296,6 +1296,7 @@ function renderHistDates(dates, allDates) {
 // ── 탭1: 단골 고객 ──
 function renderHistRegulars(dates, allDates) {
   const el = document.getElementById('histContent');
+
   // 고객별 주문 횟수 집계
   const customerMap = {};
   dates.forEach(d=>{
@@ -1307,20 +1308,73 @@ function renderHistRegulars(dates, allDates) {
     });
   });
 
-  const regulars = Object.values(customerMap).sort((a,b)=>b.count-a.count).slice(0,20);
-  if(!regulars.length) { el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);">단골 고객 데이터가 없습니다</div>`; return; }
+  // 가나다 순 정렬 (이름 기준)
+  const regulars = Object.values(customerMap)
+    .sort((a,b)=>a.name.localeCompare(b.name,'ko'));
 
-  el.innerHTML = regulars.map((c,i)=>`
+  if(!regulars.length) {
+    el.innerHTML=`<div style="text-align:center;padding:30px;color:var(--muted);">단골 고객 데이터가 없습니다</div>`;
+    return;
+  }
+
+  // 전체 목록 저장
+  window._regulars = regulars;
+
+  // 검색창 + 목록 렌더
+  el.innerHTML = `
+    <div style="position:sticky;top:0;background:#fff;padding-bottom:8px;z-index:10;">
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="regularSearch" placeholder="고객명 또는 주소 검색..."
+          style="flex:1;border:1.5px solid var(--border);border-radius:8px;
+          padding:9px 12px;font-size:.88rem;font-family:inherit;background:var(--surface);"
+          oninput="filterRegulars(this.value)">
+        <button onclick="filterRegulars('');document.getElementById('regularSearch').value='';"
+          style="padding:9px 12px;background:var(--surface);border:1.5px solid var(--border);
+          border-radius:8px;font-size:.85rem;cursor:pointer;color:var(--muted);">✕</button>
+      </div>
+      <div id="regularCount" style="font-size:.72rem;color:var(--muted);margin-top:5px;">
+        전체 ${regulars.length}명 · 가나다 순
+      </div>
+    </div>
+    <div id="regularList"></div>`;
+
+  // 목록 렌더 함수 호출
+  renderRegularList(regulars);
+}
+
+function renderRegularList(list) {
+  const el = document.getElementById('regularList');
+  if(!el) return;
+  if(!list.length) {
+    el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--muted);">검색 결과가 없습니다</div>`;
+    return;
+  }
+  el.innerHTML = list.map((c,i)=>`
     <div class="hist-item">
       <div class="hist-item-info">
         <div class="hist-item-title">${c.name} <span style="font-size:.7rem;color:var(--muted);">· ${c.store}</span></div>
         <div class="hist-item-sub">📍 ${c.addr} · 주문 ${c.count}회 · 최근 ${c.lastDate}</div>
       </div>
-      <button class="hist-add-btn" onclick="addRegularToForm(${i})">입력폼에 추가</button>
+      <button class="hist-add-btn" onclick="addRegularToForm(${window._regulars.indexOf(c)})">입력폼에 추가</button>
     </div>`).join('');
+}
 
-  // 단골 데이터 저장
-  window._regulars = regulars;
+function filterRegulars(query) {
+  const cnt = document.getElementById('regularCount');
+  if(!window._regulars) return;
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? window._regulars.filter(c=>
+        c.name.toLowerCase().includes(q) ||
+        c.addr.toLowerCase().includes(q) ||
+        c.store.toLowerCase().includes(q))
+    : window._regulars;
+
+  if(cnt) cnt.textContent = q
+    ? `검색 결과 ${filtered.length}명`
+    : `전체 ${window._regulars.length}명 · 가나다 순`;
+
+  renderRegularList(filtered);
 }
 
 // ── 탭2: 최근 전체 복사 ──
@@ -1835,11 +1889,12 @@ async function calcRoute() {
   // 동선 계산 시 검색 마커 제거
   if(_searchMarker)  { _searchMarker.setMap(null);  _searchMarker=null; }
   if(_searchOverlay) { _searchOverlay.setMap(null); _searchOverlay=null; }
-  // 주소 미리보기 마커 제거
   clearAddrPreview();
 
-  if(window.innerWidth<=768) mobTab(2);
-  clearPreviewMarkers(); // 미리보기 마커 제거 후 도로 경로로 교체
+  // 모바일: 탭 전환 먼저, 지도 그리기는 탭 전환 후
+  const isMobile = window.innerWidth<=768;
+  if(isMobile) mobTab(2);
+  clearPreviewMarkers();
 
   const rl=document.getElementById('routeList');
   const targets = getFilteredTargets();
@@ -1912,8 +1967,16 @@ async function calcRoute() {
 
   // 도로 경로로 지도 그리기
   toast('🗺️ 도로 경로 계산 중...','');
-  await updateMapRoute();
-  setTimeout(()=>kakao.maps.event.trigger(_map,'resize'),200);
+  if(isMobile) {
+    // 모바일: 지도 재생성(700ms) 완료 후 그리기
+    setTimeout(async()=>{
+      await updateMapRouteDone();
+      setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); },100);
+    }, 750);
+  } else {
+    await updateMapRouteDone();
+    setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); },200);
+  }
 
   renderRouteList();
   toast(`✅ ${delivOnly.length}건 최적 동선 완료`,'ok');
@@ -2167,7 +2230,7 @@ function openKakaoApp() {
           🟢 네이버 지도로 열기 (전체 ${pts.length}곳 경유)
         </button>
         <button onclick="openKakaoChunk(0)" style="padding:14px;background:#FEE500;color:#3C1E1E;border:none;border-radius:10px;font-size:.9rem;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation;">
-          🟡 카카오맵으로 열기 (3곳씩 분할)
+          🟡 맵으로 열기 (3곳씩 분할)
         </button>
         <button onclick="document.getElementById('mapChoiceModal').remove()" style="padding:12px;background:#f3f4f6;color:#6b7280;border:none;border-radius:10px;font-size:.85rem;font-family:inherit;cursor:pointer;">
           취소
@@ -2438,34 +2501,32 @@ function mobTab(idx) {
     document.getElementById(id).classList.toggle('on', i===idx);
   });
   if(idx===2) {
-    // 패널이 표시된 후 지도 초기화
     setTimeout(()=>{
       const c = document.getElementById('kakaoMap');
       if(!c || !window.kakao || !kakao.maps) return;
 
-      // iOS Safari: 컨테이너 크기 강제 지정
       c.style.width  = '100%';
       c.style.height = '45vh';
       c.style.minHeight = '200px';
 
       kakao.maps.load(()=>{
-        // 항상 새로 생성 (iOS에서 가장 안정적)
+        // 항상 새로 생성
         _map = new kakao.maps.Map(c, {
           center: new kakao.maps.LatLng(DEPART.lat, DEPART.lng),
           level: 5
         });
-        _markers = []; _polyline = null;
 
-        // resize 이벤트 두 번 발생 (iOS 대응)
         kakao.maps.event.trigger(_map, 'resize');
-        setTimeout(()=>{
+        setTimeout(async ()=>{
           kakao.maps.event.trigger(_map, 'resize');
           _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
-          _map.setLevel(5);
-          // 기존 동선이 있으면 다시 그리기
+
+          // 동선이 있으면 새 지도 인스턴스에 다시 그리기
           if(window._optRoute && window._optRoute.points.length) {
-            updateMapRouteDone();
+            _markers = []; _polyline = null; // 초기화 (이전 인스턴스 참조 제거)
+            await updateMapRouteDone(); // 완료 상태 포함 재그리기
           } else if(rows.length) {
+            _markers = []; _polyline = null;
             rebuildPreviewMarkers();
           }
         }, 300);
