@@ -386,8 +386,8 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   /* 카카오맵 - iOS에서 정확한 높이 강제 지정 */
   #kakaoMap {
     width:100% !important;
-    height:45vh !important;
-    min-height:200px !important;
+    height:35vh !important;
+    min-height:180px !important;
     flex-shrink:0 !important;
     position:relative !important;
     z-index:1 !important;
@@ -2506,8 +2506,8 @@ function mobTab(idx) {
       if(!c || !window.kakao || !kakao.maps) return;
 
       c.style.width  = '100%';
-      c.style.height = '45vh';
-      c.style.minHeight = '200px';
+      c.style.height = '35vh';
+      c.style.minHeight = '180px';
 
       kakao.maps.load(()=>{
         // 항상 새로 생성
