@@ -807,15 +807,28 @@ function showSyncStatus(msg) {
   el.style.display = msg ? 'block' : 'none';
 }
 
-// Firebase 준비 완료 후 또는 바로 실행
+// ── 초기화 실행 ──
+function startApp() {
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+  } else {
+    // DOMContentLoaded 이미 지난 경우 즉시 실행
+    initApp();
+  }
+}
+
 if(window._firebaseReady) {
-  window.addEventListener('DOMContentLoaded', initApp);
+  startApp();
 } else {
-  window.addEventListener('firebase-ready', initApp);
-  window.addEventListener('DOMContentLoaded', ()=>{
-    // Firebase 3초 내 미준비 시 localStorage로 fallback
+  window.addEventListener('firebase-ready', startApp);
+  // Firebase 3초 내 미준비 시 localStorage로 fallback
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ()=>{
+      setTimeout(()=>{ if(!window._firebaseReady) initApp(); }, 3000);
+    });
+  } else {
     setTimeout(()=>{ if(!window._firebaseReady) initApp(); }, 3000);
-  });
+  }
 }
 
 // ════════════════════════════════════
