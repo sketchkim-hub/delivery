@@ -2077,17 +2077,21 @@ async function updateMapRouteDone() {
     const done=p.done||false;
     const m=new kakao.maps.Marker({position:pos,map:_map});
 
-    // 번호 오버레이 - 터치 시 이름 팝업
-    const name = p.isD ? '출발: 문창전통시장' : `${idx}. ${p.row.store} · ${p.row.name}`;
-    const numOv=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
-      content:p.isD
-        ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
-        :`<div onclick="showMarkerInfo(${idx},'${(p.row.store+'·'+p.row.name).replace(/'/g,"\\'")}','${(p.row.addr||'').replace(/'/g,"\\'")}','${(p.row.phone||'').replace(/'/g,"\\'")}',${done})"
-          style="background:${done?'#9ca3af':'#d4460a'};color:#fff;font-weight:900;font-size:12px;
-          width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-          border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;
-          cursor:pointer;-webkit-tap-highlight-color:transparent;">${done?'✓':idx}</div>`
-    });
+    // 번호 오버레이 - DOM 방식으로 생성 (백틱 중첩 방지)
+    let content;
+    if(p.isD){
+      const el=document.createElement('div');
+      el.style.cssText='background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;';
+      el.textContent='🏪 출발';
+      content=el;
+    } else {
+      const el=document.createElement('div');
+      el.style.cssText=`background:${done?'#9ca3af':'#d4460a'};color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;cursor:pointer;-webkit-tap-highlight-color:transparent;`;
+      el.textContent=done?'✓':String(idx);
+      el.addEventListener('click', (e)=>{ e.stopPropagation(); showMarkerInfoByIdx(idx); });
+      content=el;
+    }
+    const numOv=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,content});
     _markers.push(m,numOv);
   });
   _map.setBounds(bounds);
@@ -2177,15 +2181,20 @@ async function updateMapRoute() {
   allPts.forEach((p,idx)=>{
     const pos=new kakao.maps.LatLng(p.lat,p.lng); bounds.extend(pos);
     const m=new kakao.maps.Marker({position:pos,map:_map});
-    const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
-      content:p.isD
-        ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
-        :`<div onclick="showMarkerInfo(${idx},'${(p.row.store+'·'+p.row.name).replace(/'/g,"\\'")}','${(p.row.addr||'').replace(/'/g,"\\'")}','${(p.row.phone||'').replace(/'/g,"\\'")}',false)"
-          style="background:#d4460a;color:#fff;font-weight:900;font-size:12px;
-          width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-          border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;
-          cursor:pointer;-webkit-tap-highlight-color:transparent;">${idx}</div>`
-    });
+    let content;
+    if(p.isD){
+      const el=document.createElement('div');
+      el.style.cssText='background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;';
+      el.textContent='🏪 출발';
+      content=el;
+    } else {
+      const el=document.createElement('div');
+      el.style.cssText='background:#d4460a;color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;cursor:pointer;-webkit-tap-highlight-color:transparent;';
+      el.textContent=String(idx);
+      el.addEventListener('click', (e)=>{ e.stopPropagation(); showMarkerInfoByIdx(idx); });
+      content=el;
+    }
+    const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,content});
     _markers.push(m,ov);
   });
   _map.setBounds(bounds);
@@ -2215,48 +2224,74 @@ async function updateMapRoute() {
 // ── 마커 터치 시 배송지 정보 팝업 ──
 let _markerInfoOverlay = null;
 
-function showMarkerInfo(idx, name, addr, phone, done) {
-  // 기존 팝업 제거
-  if(_markerInfoOverlay) { _markerInfoOverlay.setMap(null); _markerInfoOverlay=null; }
-
-  const allPts = [{isD:true},...(window._optRoute?.points||[])];
+function showMarkerInfoByIdx(idx) {
+  if(!window._optRoute) return;
+  const allPts = [{isD:true, lat:DEPART.lat, lng:DEPART.lng}, ...window._optRoute.points];
   const p = allPts[idx];
-  if(!p||p.isD) return;
+  if(!p || p.isD) return;
 
-  const pos = new kakao.maps.LatLng(p.lat, p.lng);
+  const name  = (p.row.store||'') + ' · ' + (p.row.name||'');
+  const addr  = p.row.addr||'';
+  const phone = p.row.phone||'';
+  const done  = p.done||false;
+
+  showMarkerInfo(idx, name, addr, phone, done, p.lat, p.lng);
+}
+
+function showMarkerInfo(idx, name, addr, phone, done, lat, lng) {
+  if(_markerInfoOverlay) { _markerInfoOverlay.setMap(null); _markerInfoOverlay=null; }
+  if(!_map) return;
+
+  const pos = new kakao.maps.LatLng(lat, lng);
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.2);min-width:160px;max-width:220px;border:2px solid #d4460a;position:relative;margin-top:-70px;';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'position:absolute;top:4px;right:6px;background:none;border:none;font-size:1rem;cursor:pointer;color:#9ca3af;padding:0;line-height:1;';
+  closeBtn.addEventListener('click', closeMarkerInfo);
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-weight:900;font-size:.88rem;color:#1a1a2e;margin-bottom:4px;padding-right:16px;';
+  title.textContent = (done ? '✅ ' : '') + idx + '. ' + name;
+
+  const addrEl = document.createElement('div');
+  addrEl.style.cssText = 'font-size:.75rem;color:#6b7280;';
+  addrEl.textContent = '📍 ' + addr;
+
+  wrap.appendChild(closeBtn);
+  wrap.appendChild(title);
+  wrap.appendChild(addrEl);
+
+  if(phone) {
+    const phoneEl = document.createElement('div');
+    phoneEl.style.cssText = 'font-size:.75rem;color:#6b7280;margin-top:2px;';
+    phoneEl.textContent = '📞 ' + phone;
+    wrap.appendChild(phoneEl);
+  }
+  if(done) {
+    const doneEl = document.createElement('div');
+    doneEl.style.cssText = 'font-size:.72rem;color:#16a34a;margin-top:4px;font-weight:700;';
+    doneEl.textContent = '✅ 배송 완료';
+    wrap.appendChild(doneEl);
+  }
+
   _markerInfoOverlay = new kakao.maps.CustomOverlay({
-    position: pos,
-    map: _map,
-    yAnchor: 1,
-    zIndex: 10,
-    content: `
-      <div style="background:#fff;border-radius:10px;padding:10px 12px;
-        box-shadow:0 4px 16px rgba(0,0,0,.2);min-width:160px;max-width:220px;
-        border:2px solid #d4460a;position:relative;margin-top:-70px;">
-        <button onclick="closeMarkerInfo()"
-          style="position:absolute;top:4px;right:6px;background:none;border:none;
-          font-size:1rem;cursor:pointer;color:#9ca3af;padding:0;line-height:1;">✕</button>
-        <div style="font-weight:900;font-size:.88rem;color:#1a1a2e;margin-bottom:4px;padding-right:16px;">
-          ${done?'✅ ':''}${idx}. ${name}
-        </div>
-        <div style="font-size:.75rem;color:#6b7280;">📍 ${addr}</div>
-        ${phone?`<div style="font-size:.75rem;color:#6b7280;margin-top:2px;">📞 ${phone}</div>`:''}
-        ${done?'<div style="font-size:.72rem;color:#16a34a;margin-top:4px;font-weight:700;">✅ 배송 완료</div>':''}
-      </div>`
+    position: pos, map: _map, yAnchor: 1, zIndex: 10, content: wrap
   });
 
-  // 지도 중심 이동
   _map.panTo(pos);
-
-  // 3초 후 자동 닫기
   clearTimeout(window._markerInfoTimer);
-  window._markerInfoTimer = setTimeout(closeMarkerInfo, 3000);
+  window._markerInfoTimer = setTimeout(closeMarkerInfo, 4000);
 }
 
 function closeMarkerInfo() {
   if(_markerInfoOverlay) { _markerInfoOverlay.setMap(null); _markerInfoOverlay=null; }
   clearTimeout(window._markerInfoTimer);
 }
+
+function clearMarkers() {
   _markers.forEach(m=>m.setMap(null)); _markers=[];
   if(_polyline){_polyline.setMap(null);_polyline=null;}
 }
