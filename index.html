@@ -2076,12 +2076,19 @@ async function updateMapRouteDone() {
     const pos=new kakao.maps.LatLng(p.lat,p.lng); bounds.extend(pos);
     const done=p.done||false;
     const m=new kakao.maps.Marker({position:pos,map:_map});
-    const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
+
+    // 번호 오버레이 - 터치 시 이름 팝업
+    const name = p.isD ? '출발: 문창전통시장' : `${idx}. ${p.row.store} · ${p.row.name}`;
+    const numOv=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
       content:p.isD
         ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
-        :`<div style="background:${done?'#9ca3af':'#d4460a'};color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;">${done?'✓':idx}</div>`
+        :`<div onclick="showMarkerInfo(${idx},'${(p.row.store+'·'+p.row.name).replace(/'/g,"\\'")}','${(p.row.addr||'').replace(/'/g,"\\'")}','${(p.row.phone||'').replace(/'/g,"\\'")}',${done})"
+          style="background:${done?'#9ca3af':'#d4460a'};color:#fff;font-weight:900;font-size:12px;
+          width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;
+          cursor:pointer;-webkit-tap-highlight-color:transparent;">${done?'✓':idx}</div>`
     });
-    _markers.push(m,ov);
+    _markers.push(m,numOv);
   });
   _map.setBounds(bounds);
 
@@ -2173,7 +2180,11 @@ async function updateMapRoute() {
     const ov=new kakao.maps.CustomOverlay({position:pos,map:_map,yAnchor:1,
       content:p.isD
         ?`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 출발</div>`
-        :`<div style="background:#d4460a;color:#fff;font-weight:900;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;">${idx}</div>`
+        :`<div onclick="showMarkerInfo(${idx},'${(p.row.store+'·'+p.row.name).replace(/'/g,"\\'")}','${(p.row.addr||'').replace(/'/g,"\\'")}','${(p.row.phone||'').replace(/'/g,"\\'")}',false)"
+          style="background:#d4460a;color:#fff;font-weight:900;font-size:12px;
+          width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-34px;
+          cursor:pointer;-webkit-tap-highlight-color:transparent;">${idx}</div>`
     });
     _markers.push(m,ov);
   });
@@ -2201,7 +2212,51 @@ async function updateMapRoute() {
   }
 }
 
-function clearMarkers() {
+// ── 마커 터치 시 배송지 정보 팝업 ──
+let _markerInfoOverlay = null;
+
+function showMarkerInfo(idx, name, addr, phone, done) {
+  // 기존 팝업 제거
+  if(_markerInfoOverlay) { _markerInfoOverlay.setMap(null); _markerInfoOverlay=null; }
+
+  const allPts = [{isD:true},...(window._optRoute?.points||[])];
+  const p = allPts[idx];
+  if(!p||p.isD) return;
+
+  const pos = new kakao.maps.LatLng(p.lat, p.lng);
+  _markerInfoOverlay = new kakao.maps.CustomOverlay({
+    position: pos,
+    map: _map,
+    yAnchor: 1,
+    zIndex: 10,
+    content: `
+      <div style="background:#fff;border-radius:10px;padding:10px 12px;
+        box-shadow:0 4px 16px rgba(0,0,0,.2);min-width:160px;max-width:220px;
+        border:2px solid #d4460a;position:relative;margin-top:-70px;">
+        <button onclick="closeMarkerInfo()"
+          style="position:absolute;top:4px;right:6px;background:none;border:none;
+          font-size:1rem;cursor:pointer;color:#9ca3af;padding:0;line-height:1;">✕</button>
+        <div style="font-weight:900;font-size:.88rem;color:#1a1a2e;margin-bottom:4px;padding-right:16px;">
+          ${done?'✅ ':''}${idx}. ${name}
+        </div>
+        <div style="font-size:.75rem;color:#6b7280;">📍 ${addr}</div>
+        ${phone?`<div style="font-size:.75rem;color:#6b7280;margin-top:2px;">📞 ${phone}</div>`:''}
+        ${done?'<div style="font-size:.72rem;color:#16a34a;margin-top:4px;font-weight:700;">✅ 배송 완료</div>':''}
+      </div>`
+  });
+
+  // 지도 중심 이동
+  _map.panTo(pos);
+
+  // 3초 후 자동 닫기
+  clearTimeout(window._markerInfoTimer);
+  window._markerInfoTimer = setTimeout(closeMarkerInfo, 3000);
+}
+
+function closeMarkerInfo() {
+  if(_markerInfoOverlay) { _markerInfoOverlay.setMap(null); _markerInfoOverlay=null; }
+  clearTimeout(window._markerInfoTimer);
+}
   _markers.forEach(m=>m.setMap(null)); _markers=[];
   if(_polyline){_polyline.setMap(null);_polyline=null;}
 }
