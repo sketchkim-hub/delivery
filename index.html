@@ -1546,10 +1546,10 @@ async function showAddrPreview() {
     return;
   }
 
-  const addr = '대전광역시 ' + selGuVal + ' ' + dong;
+  const addr = selGuVal + ' ' + dong;
   status.textContent = '🔍 검색 중...';
 
-  const res = await geocodeAddr(addr);
+  const res = await resolveAddr(addr);
   if(!res) {
     status.textContent = '⚠️ 주소를 찾을 수 없음';
     clearAddrPreview();
@@ -1857,14 +1857,77 @@ function initMap() {
   });
 }
 
+// ── 주소 → 좌표 변환 (다단계 시도) ──
 function geocodeAddr(addr) {
   return new Promise(res=>{
     if(!window.kakao||!kakao.maps.services) return res(null);
     new kakao.maps.services.Geocoder().addressSearch(addr,(result,status)=>{
-      if(status===kakao.maps.services.Status.OK) res({lat:parseFloat(result[0].y),lng:parseFloat(result[0].x)});
+      if(status===kakao.maps.services.Status.OK)
+        res({lat:parseFloat(result[0].y),lng:parseFloat(result[0].x)});
       else res(null);
     });
   });
+}
+
+// ── 키워드로 장소 검색 ──
+function searchByKeyword(keyword) {
+  return new Promise(res=>{
+    if(!window.kakao||!kakao.maps.services) return res(null);
+    const center = new kakao.maps.LatLng(36.3504, 127.3845);
+    new kakao.maps.services.Places().keywordSearch(
+      keyword,
+      (result,status)=>{
+        if(status===kakao.maps.services.Status.OK&&result.length)
+          res({lat:parseFloat(result[0].y),lng:parseFloat(result[0].x)});
+        else res(null);
+      },
+      {location:center, radius:25000}
+    );
+  });
+}
+
+// ── 주소 정제 단계별 변환 ──
+async function resolveAddr(rawAddr) {
+  const full = '대전광역시 ' + rawAddr;
+
+  // 1단계: 전체 주소 그대로
+  let r = await geocodeAddr(full);
+  if(r) return r;
+
+  // 2단계: 건물명/동호수 제거 (숫자+한글 끝부분 제거)
+  const stripped = full
+    .replace(/\s*\d+동\s*\d*호?$/,'')   // 아파트 동호수
+    .replace(/\s+[가-힣]+아파트.*$/,'') // 아파트명 이후
+    .replace(/\s+[가-힣]+빌라.*$/,'')   // 빌라명 이후
+    .replace(/\s+[가-힣]+타운.*$/,'')
+    .replace(/\s+[가-힣]+빌딩.*$/,'')
+    .replace(/\s+[가-힣]+마트.*$/,'')
+    .trim();
+  if(stripped !== full) {
+    r = await geocodeAddr(stripped);
+    if(r) return r;
+  }
+
+  // 3단계: 구+로/길 만 사용 (건물 정보 전부 제거)
+  const parts = rawAddr.split(' ');
+  const roadIdx = parts.findIndex(p=>/로\d*$|길\d*$|로$|길$/.test(p));
+  if(roadIdx>0) {
+    const roadOnly = '대전광역시 ' + parts.slice(0, roadIdx+1).join(' ');
+    r = await geocodeAddr(roadOnly);
+    if(r) return r;
+  }
+
+  // 4단계: 키워드 검색 (장소명으로)
+  r = await searchByKeyword('대전 ' + rawAddr);
+  if(r) return r;
+
+  // 5단계: 구+동만
+  if(parts.length>=2) {
+    r = await geocodeAddr('대전광역시 ' + parts[0] + ' ' + parts[1]);
+    if(r) return r;
+  }
+
+  return null;
 }
 
 function tsp(pts) {
@@ -1916,9 +1979,8 @@ async function calcRoute() {
   if(!DEPART.lat){const dep=await geocodeAddr(DEPART.addr);if(dep){DEPART.lat=dep.lat;DEPART.lng=dep.lng;}}
 
   const results = await Promise.all(targets.map(async r=>{
-    let res = await geocodeAddr('대전광역시 '+r.addr);
-    if(!res) res = await geocodeAddr('대전광역시 '+r.addr.split(' ').slice(0,2).join(' '));
-    return res ? {...res,row:r} : {failed:true,row:r};
+    const res = await resolveAddr(r.addr);
+    return res ? {...res, row:r} : {failed:true, row:r};
   }));
 
   const ok  = results.filter(r=>!r.failed);
