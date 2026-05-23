@@ -792,6 +792,26 @@ async function initApp() {
         setTimeout(()=>showSyncStatus(''),2000);
       }
     });
+
+    // ── 상인 배송 신청 실시간 감지 ──
+    window._fbWatch('requests_rows/'+dateKey, (reqData)=>{
+      if(!reqData) return;
+      const reqRows = Object.values(reqData);
+      // 이미 추가된 것(fromRequest) 제외하고 새것만 추가
+      const existing = rows.filter(r=>r.fromRequest);
+      const newReqs = reqRows.filter(r=>
+        !existing.some(e=>e.groupId===r.groupId && e.name===r.name)
+      );
+      if(!newReqs.length) return;
+      // seq 재부여 후 추가
+      newReqs.forEach(r=>{ r.seq=rows.length+1; rows.push(r); });
+      rows.forEach((x,i)=>x.seq=i+1);
+      saveRows(); renderTable(); updateSeq();
+      rebuildPreviewMarkers();
+      showSyncStatus(`🔔 새 배송 신청 ${newReqs.length}건 추가됨!`);
+      setTimeout(()=>showSyncStatus(''),4000);
+      toast(`🔔 새 배송 신청 ${newReqs.length}건이 추가되었습니다`,'ok');
+    });
   }
 
   if(window.kakao && kakao.maps) kakao.maps.load(()=>{
@@ -962,29 +982,33 @@ function addRow() {
   if(!date)           return toast('날짜를 선택하세요','err');
   if(selStore===null) return toast('점포를 선택하세요','err');
   if(!name)           return toast('고객명을 입력하세요','err');
-  if(!goodsList.length) return toast('물품을 추가하세요','err');
+  if(!date)           return toast('날짜를 선택하세요','err');
+  if(selStore===null) return toast('점포를 선택하세요','err');
+  if(!name)           return toast('고객명을 입력하세요','err');
 
   const addr = [selGuVal, dong].filter(Boolean).join(' ') || '-';
   const store = stores[selStore];
   const groupId = Date.now();
   const amtInt = amt ? Math.round(Number(amt)) : '';
 
-  goodsList.forEach((g, gi) => {
+  // 물품 없으면 빈 항목 하나로 처리
+  const addList = goodsList.length ? goodsList : [{name:'-', item:'-'}];
+
+  addList.forEach((g, gi) => {
     rows.push({
       seq: rows.length+1, date, store, name, phone,
       goods: g.name, item: g.item||'-',
       amt: gi===0 ? amtInt : '',
       box: gi===0 ? (box||'-') : '',
       addr, gu: selGuVal||'-', time: timeLabel,
-      groupId, groupFirst: gi===0, groupSize: goodsList.length
+      groupId, groupFirst: gi===0, groupSize: addList.length
     });
   });
 
   saveRows(); renderTable(); updateSeq();
-  toast(`✅ ${store} / ${name} — ${goodsList.length}개 추가됨`,'ok');
+  toast(`✅ ${store} / ${name} 추가됨`,'ok');
   resetAll();
   if(window.innerWidth<=768) mobTab(1);
-  // 지도에 자동으로 마커 추가
   addPreviewMarker(addr, name, store, goodsList.map(g=>g.name).join(', '));
 }
 
