@@ -34,7 +34,17 @@ body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background
 }
 .field textarea { resize: vertical; min-height: 80px; }
 
-/* ── 배송시간 버튼 ── */
+/* ── 점포 버튼 ── */
+.store-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.store-btn {
+  padding: 13px 8px; border: 1.5px solid var(--border); border-radius: 9px;
+  background: var(--surface); font-size: .88rem; font-weight: 700; font-family: inherit;
+  color: var(--ink); cursor: pointer; text-align: center;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: all .13s;
+}
+.store-btn:hover { border-color: var(--accent); color: var(--accent); background: #fff5f2; }
+.store-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 .time-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .time-btn {
   padding: 12px; border: 1.5px solid var(--border); border-radius: 8px;
@@ -117,6 +127,14 @@ body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background
 
 <!-- 신청 폼 -->
 <div class="form-wrap" id="formWrap">
+
+  <!-- 점포 선택 -->
+  <div class="card">
+    <h3>🏪 점포 선택 *</h3>
+    <div id="storeLoading" style="text-align:center;padding:12px;color:var(--muted);font-size:.85rem;">⏳ 점포 목록 로딩 중...</div>
+    <div id="storeBtns" style="display:none;"></div>
+    <div id="storeEmpty" style="display:none;color:var(--muted);font-size:.85rem;text-align:center;padding:10px;">등록된 점포가 없습니다</div>
+  </div>
 
   <!-- 날짜/시간 -->
   <div class="card">
@@ -231,9 +249,59 @@ window._firebaseReady = true;
 const TIMES = ['오전 9:10', '오후 1:10'];
 let selTimeIdx = null;
 let goodsList = [];
+let selStoreIdx = null;
+let storeList = [];
 
 // 오늘 날짜 기본값
 document.getElementById('rDate').value = new Date().toISOString().slice(0,10);
+
+// Firebase 준비 후 점포 목록 로드
+function loadStores() {
+  if(!window._fbWatch) {
+    setTimeout(loadStores, 500); return;
+  }
+  // Firebase에서 점포 목록 실시간 로드
+  window._fbWatch('config/stores', (data)=>{
+    storeList = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
+    renderStores();
+  });
+}
+
+function renderStores() {
+  const loading = document.getElementById('storeLoading');
+  const wrap    = document.getElementById('storeBtns');
+  const empty   = document.getElementById('storeEmpty');
+
+  loading.style.display = 'none';
+
+  if(!storeList.length) {
+    wrap.style.display  = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  wrap.style.display  = 'block';
+  wrap.innerHTML = `<div class="store-grid">` +
+    storeList.map((s,i)=>`
+      <button class="store-btn${selStoreIdx===i?' on':''}" onclick="pickStore(${i})">
+        ${s}
+      </button>`).join('') +
+    `</div>`;
+}
+
+function pickStore(i) {
+  selStoreIdx = (selStoreIdx===i) ? null : i;
+  renderStores();
+}
+
+// 점포 로드 시작 (Firebase 준비 대기)
+if(window._firebaseReady) {
+  loadStores();
+} else {
+  window.addEventListener('firebase-ready', loadStores);
+  setTimeout(loadStores, 3000); // fallback
+}
 
 function selTime(i) {
   selTimeIdx = (selTimeIdx===i) ? null : i;
@@ -272,9 +340,12 @@ async function submitRequest() {
   const memo  = document.getElementById('rMemo').value.trim();
 
   if(!date)  return toast('날짜를 선택하세요','err');
+  if(selStoreIdx===null) return toast('점포를 선택하세요','err');
   if(!name)  return toast('받는 분 이름을 입력하세요','err');
   if(!gu)    return toast('지역구를 선택하세요','err');
   if(!addr)  return toast('배송 주소를 입력하세요','err');
+
+  const store = storeList[selStoreIdx] || '미지정';
 
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
@@ -291,7 +362,7 @@ async function submitRequest() {
 
   // 배송 요청을 Firebase requests 경로에 저장
   const reqData = {
-    date, name, phone, addr: fullAddr, gu,
+    date, store, name, phone, addr: fullAddr, gu,
     time: timeLabel, amt: amt||'', box: box||'',
     memo, goods: addList, status: 'pending',
     requestedAt: new Date().toISOString()
@@ -326,7 +397,7 @@ async function submitRequest() {
     const groupId = Date.now();
     addList.forEach(async (g, gi) => {
       const row = {
-        seq: 0, date, store: '요청', name, phone,
+        seq: 0, date, store, name, phone,
         goods: g.name, item: g.item||'-',
         amt: gi===0 ? (amt ? Math.round(Number(amt)) : '') : '',
         box: gi===0 ? (box||'-') : '',
@@ -362,6 +433,7 @@ function resetForm() {
   document.getElementById('rBox').value='';
   document.getElementById('rMemo').value='';
   document.getElementById('rDate').value = new Date().toISOString().slice(0,10);
+  selStoreIdx=null; renderStores();
   goodsList=[]; renderGoods();
   selTimeIdx=null;
   document.getElementById('tb0').classList.remove('on');
