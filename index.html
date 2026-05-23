@@ -11,6 +11,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getDatabase, ref, set, get, onValue } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDOm2OngRf5DwGOBAyGYk7-rmClkHBMj50",
@@ -22,10 +23,11 @@ const firebaseConfig = {
   appId: "1:203200824872:web:2758175b0c8f253647971d"
 };
 
+const VAPID_KEY = 'BID_PzeoplNcklI1n1F0PcmJhRwUfLZJlKB_T8EkJv8scEacDkL4TqwHrJmsjpFbD93xeL0g0B3iLg3n-RQOhrA';
+
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-// ── Firebase 저장/로드 함수 전역 등록 ──
 window._fbSet = async (path, data) => {
   try { await set(ref(db, path), data); return true; }
   catch(e) { console.warn('Firebase 저장 실패:', e); return false; }
@@ -39,6 +41,33 @@ window._fbGet = async (path) => {
 window._fbWatch = (path, cb) => {
   onValue(ref(db, path), snap => cb(snap.exists() ? snap.val() : null));
 };
+
+// ── FCM 푸시 알림 설정 ──
+window._setupPush = async () => {
+  try {
+    if(!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.register('/delivery/firebase-messaging-sw.js');
+    const messaging = getMessaging(app);
+    const permission = await Notification.requestPermission();
+    if(permission !== 'granted') return;
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if(token) {
+      await set(ref(db, 'fcm_tokens/admin'), { token, updatedAt: new Date().toISOString() });
+      window._fcmToken = token;
+    }
+    onMessage(messaging, (payload) => {
+      const { title, body } = payload.notification || {};
+      if(window.toast) window.toast('🔔 ' + (body||title||'새 배송 신청'), 'ok');
+      if(Notification.permission==='granted') {
+        new Notification(title||'새 배송 신청', {
+          body: body||'새로운 배송 신청이 들어왔습니다',
+          tag: 'delivery-request', requireInteraction: true
+        });
+      }
+    });
+  } catch(e) { console.warn('FCM 설정 실패:', e); }
+};
+
 window._firebaseReady = true;
 window.dispatchEvent(new Event('firebase-ready'));
 </script>
@@ -413,6 +442,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   <div class="hdr-title">배송 <span>일일보고서</span></div>
   <div id="syncStatus" style="display:none;font-size:.72rem;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:12px;white-space:nowrap;"></div>
   <div class="hdr-date" id="hdrDate"></div>
+  <button id="notiBtn" onclick="enableNotification()" style="display:none;background:#f59e0b;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:.72rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">🔔 알림켜기</button>
   <button class="hdr-btn" style="background:#7c3aed;" onclick="openHistoryModal()">📂 이전주문</button>
   <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선 계산</button>
   <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
@@ -731,6 +761,16 @@ async function initApp() {
   showSyncStatus('✅ 동기화 완료');
   setTimeout(()=>showSyncStatus(''), 2000);
 
+  // 푸시 알림 자동 설정 시도
+  setTimeout(async ()=>{
+    if(window._setupPush) {
+      await window._setupPush();
+      if(window._fcmToken) showSyncStatus('🔔 알림 설정 완료');
+      else showNotiBtn(); // 권한 요청 버튼 표시
+      setTimeout(()=>showSyncStatus(''),2000);
+    }
+  }, 2000);
+
   // 날짜 변경 시 해당 날짜 데이터 로드
   document.getElementById('fDate').addEventListener('change', async (e)=>{
     const newDate = e.target.value;
@@ -825,6 +865,26 @@ function showSyncStatus(msg) {
   if(!el) return;
   el.textContent = msg;
   el.style.display = msg ? 'block' : 'none';
+}
+
+function showNotiBtn() {
+  const btn = document.getElementById('notiBtn');
+  if(btn) btn.style.display = 'block';
+}
+
+async function enableNotification() {
+  const btn = document.getElementById('notiBtn');
+  if(btn) { btn.textContent='⏳'; btn.disabled=true; }
+  if(window._setupPush) {
+    await window._setupPush();
+    if(window._fcmToken) {
+      if(btn) btn.style.display='none';
+      toast('🔔 알림이 설정되었습니다!','ok');
+    } else {
+      if(btn) { btn.textContent='🔔 알림켜기'; btn.disabled=false; }
+      toast('알림 권한을 허용해 주세요','err');
+    }
+  }
 }
 
 // ── 초기화 실행 ──

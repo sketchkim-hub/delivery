@@ -47,16 +47,25 @@ body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background
 .goods-tag {
   display: flex; align-items: center; justify-content: space-between;
   background: var(--surface); border: 1.5px solid var(--border);
-  border-radius: 7px; padding: 8px 10px; font-size: .85rem; font-weight: 600; margin-bottom: 6px;
+  border-radius: 8px; padding: 12px 14px; font-size: .92rem; font-weight: 600; margin-bottom: 8px;
 }
-.goods-tag button { background: none; border: none; cursor: pointer; color: var(--muted); font-size: .9rem; padding: 0 4px; }
-.goods-add-row { display: flex; flex-direction: column; gap: 6px; }
-.goods-add-row .row { display: flex; gap: 6px; }
-.goods-add-row input { flex: 1; }
-.goods-add-row select { width: 100px; }
+.goods-tag button { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1rem; padding: 0 6px; touch-action: manipulation; }
+.goods-add-row { display: flex; flex-direction: column; gap: 8px; }
+.goods-add-row .row { display: flex; gap: 8px; }
+.goods-add-row input {
+  flex: 1; border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 13px 12px; font-size: 1rem; font-family: inherit; background: var(--surface);
+  color: var(--ink);
+}
+.goods-add-row input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.goods-add-row select {
+  width: 110px; border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 13px 8px; font-size: .92rem; font-family: inherit;
+  background: var(--surface); color: var(--ink);
+}
 .plus-btn {
-  padding: 11px 16px; background: var(--ink); color: #fff; border: none;
-  border-radius: 8px; font-size: .88rem; font-weight: 700; font-family: inherit;
+  padding: 14px 16px; background: var(--ink); color: #fff; border: none;
+  border-radius: 9px; font-size: .95rem; font-weight: 700; font-family: inherit;
   cursor: pointer; width: 100%; touch-action: manipulation;
 }
 
@@ -291,6 +300,28 @@ async function submitRequest() {
   const ok = await window._fbPush('requests/' + date, reqData);
 
   if(ok) {
+    // FCM 토큰으로 푸시 알림 발송 (Firebase Functions 없이 REST API 사용)
+    try {
+      const tokenSnap = await window._fbGet('fcm_tokens/admin');
+      if(tokenSnap && tokenSnap.token) {
+        await fetch('https://fcm.googleapis.com/fcm/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'key=AAAA_SERVER_KEY_PLACEHOLDER'
+          },
+          body: JSON.stringify({
+            to: tokenSnap.token,
+            notification: {
+              title: '🛒 새 배송 신청!',
+              body: `${name} / ${fullAddr} (${timeLabel})`,
+              click_action: 'https://sketchkim-hub.github.io/delivery'
+            },
+            data: { date, name, addr: fullAddr }
+          })
+        });
+      }
+    } catch(e) { console.warn('푸시 알림 발송 실패:', e); }
     // 배송 보고서 rows에도 자동 추가
     const groupId = Date.now();
     addList.forEach(async (g, gi) => {
