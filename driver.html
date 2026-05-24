@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>위치 전송 | 배송 기사</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+:root { --ink:#1a1a2e; --green:#16a34a; --surface:#f5f3ef; --border:#e2ddd8; --muted:#8a8a9a; }
+body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:var(--surface); color:var(--ink); min-height:100vh; display:flex; flex-direction:column; }
+
+.hdr { background:var(--ink); color:#fff; padding:16px; text-align:center; }
+.hdr h1 { font-size:1.1rem; font-weight:800; }
+.hdr p  { font-size:.78rem; opacity:.7; margin-top:3px; }
+
+.wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px 20px; gap:20px; }
+
+.status-card {
+  width:100%; max-width:380px; background:#fff; border-radius:16px;
+  padding:24px; box-shadow:0 2px 12px rgba(0,0,0,.08); text-align:center;
+}
+.status-icon { font-size:3rem; margin-bottom:10px; }
+.status-title { font-size:1rem; font-weight:800; margin-bottom:6px; }
+.status-sub { font-size:.82rem; color:var(--muted); line-height:1.6; }
+
+.start-btn {
+  width:100%; max-width:380px; padding:18px; background:var(--green); color:#fff;
+  border:none; border-radius:14px; font-size:1.05rem; font-weight:900;
+  font-family:inherit; cursor:pointer; box-shadow:0 4px 14px rgba(22,163,74,.3);
+  touch-action:manipulation; transition:all .15s;
+}
+.start-btn:active { transform:scale(.97); }
+.start-btn.stopping { background:#ef4444; }
+
+.info-row {
+  width:100%; max-width:380px; background:#fff; border-radius:12px;
+  padding:14px 16px; display:flex; align-items:center; gap:10px;
+  font-size:.82rem; box-shadow:0 1px 4px rgba(0,0,0,.06);
+}
+.info-row .label { color:var(--muted); min-width:60px; }
+.info-row .value { font-weight:700; }
+
+.pulse { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--green); animation:pulse 1.5s infinite; margin-right:5px; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.5;transform:scale(1.4);} }
+
+.log { width:100%; max-width:380px; background:#fff; border-radius:12px; padding:14px 16px; font-size:.75rem; color:var(--muted); max-height:120px; overflow-y:auto; line-height:1.8; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>🚐 배송 위치 전송</h1>
+  <p id="hdrDate"></p>
+</div>
+
+<div class="wrap">
+
+  <div class="status-card">
+    <div class="status-icon" id="statusIcon">📍</div>
+    <div class="status-title" id="statusTitle">위치 전송 준비</div>
+    <div class="status-sub" id="statusSub">아래 버튼을 눌러 위치 전송을 시작하세요.<br>관리자가 실시간으로 위치를 확인합니다.</div>
+  </div>
+
+  <button class="start-btn" id="startBtn" onclick="toggleTracking()">
+    📡 위치 전송 시작
+  </button>
+
+  <div class="info-row" id="coordRow" style="display:none;">
+    <span class="label">📍 현재 위치</span>
+    <span class="value" id="coordVal">-</span>
+  </div>
+
+  <div class="info-row" id="timeRow" style="display:none;">
+    <span class="label">⏱ 마지막 전송</span>
+    <span class="value" id="timeVal">-</span>
+  </div>
+
+  <div class="log" id="logBox"></div>
+
+</div>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, set } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDOm2OngRf5DwGOBAyGYk7-rmClkHBMj50",
+  authDomain: "delivery-23728.firebaseapp.com",
+  databaseURL: "https://delivery-23728-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "delivery-23728",
+  storageBucket: "delivery-23728.firebasestorage.app",
+  messagingSenderId: "203200824872",
+  appId: "1:203200824872:web:2758175b0c8f253647971d"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+window._sendLocation = async (lat, lng) => {
+  const dateKey = new URLSearchParams(location.search).get('date') || new Date().toISOString().slice(0,10);
+  try {
+    await set(ref(db, 'driver_location/'+dateKey), {
+      lat, lng, updatedAt: new Date().toISOString()
+    });
+    return true;
+  } catch(e) { return false; }
+};
+window._fbReady = true;
+</script>
+
+<script>
+// URL에서 날짜 파라미터
+const dateKey = new URLSearchParams(location.search).get('date') || new Date().toISOString().slice(0,10);
+document.getElementById('hdrDate').textContent = dateKey + ' 배송';
+
+let tracking = false;
+let watchId  = null;
+let sendCount = 0;
+let lastLat = null, lastLng = null;
+
+function log(msg) {
+  const el = document.getElementById('logBox');
+  const time = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  el.innerHTML = `[${time}] ${msg}\n` + el.innerHTML;
+}
+
+function toggleTracking() {
+  if(!tracking) startTracking();
+  else stopTracking();
+}
+
+function startTracking() {
+  if(!navigator.geolocation) {
+    setStatus('❌','GPS 미지원','이 기기는 위치 서비스를 지원하지 않습니다.');
+    return;
+  }
+  tracking = true;
+  sendCount = 0;
+  const btn = document.getElementById('startBtn');
+  btn.textContent = '⏹ 위치 전송 중지';
+  btn.classList.add('stopping');
+  setStatus('📡','<span class="pulse"></span>전송 중...','위치를 실시간으로 전송하고 있습니다.');
+  document.getElementById('coordRow').style.display = 'flex';
+  document.getElementById('timeRow').style.display = 'flex';
+  log('위치 전송 시작');
+
+  // 위치 변경 감지 (5초마다 자동 전송)
+  watchId = navigator.geolocation.watchPosition(
+    onPosition,
+    onError,
+    { enableHighAccuracy:true, timeout:10000, maximumAge:5000 }
+  );
+
+  // watchPosition이 느릴 수 있어 5초마다 강제 전송
+  window._trackInterval = setInterval(()=>{
+    if(lastLat && lastLng) sendPos(lastLat, lastLng);
+  }, 5000);
+}
+
+function stopTracking() {
+  tracking = false;
+  if(watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId=null; }
+  clearInterval(window._trackInterval);
+  const btn = document.getElementById('startBtn');
+  btn.textContent = '📡 위치 전송 시작';
+  btn.classList.remove('stopping');
+  setStatus('⏹','전송 중지됨',`총 ${sendCount}회 전송했습니다.`);
+  log('위치 전송 중지 (총 '+sendCount+'회)');
+}
+
+function onPosition(pos) {
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+  lastLat = lat; lastLng = lng;
+  sendPos(lat, lng);
+}
+
+async function sendPos(lat, lng) {
+  if(!window._sendLocation) return;
+  const ok = await window._sendLocation(lat, lng);
+  if(ok) {
+    sendCount++;
+    const timeStr = new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    document.getElementById('coordVal').textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
+    document.getElementById('timeVal').textContent = timeStr + ' (' + sendCount + '회)';
+    if(sendCount % 5 === 1) log('위치 전송 #' + sendCount + ': ' + lat.toFixed(4) + ', ' + lng.toFixed(4));
+  }
+}
+
+function onError(err) {
+  const msgs = { 1:'위치 권한이 거부되었습니다.', 2:'위치를 가져올 수 없습니다.', 3:'시간 초과' };
+  setStatus('⚠️','위치 오류', msgs[err.code]||'알 수 없는 오류');
+  log('오류: ' + (msgs[err.code]||err.message));
+}
+
+function setStatus(icon, title, sub) {
+  document.getElementById('statusIcon').textContent = icon;
+  document.getElementById('statusTitle').innerHTML = title;
+  document.getElementById('statusSub').textContent = sub;
+}
+
+// 페이지 종료 시 전송 중지
+window.addEventListener('beforeunload', ()=>{ if(tracking) stopTracking(); });
+log('페이지 로드 완료 - 날짜: ' + dateKey);
+</script>
+</body>
+</html>

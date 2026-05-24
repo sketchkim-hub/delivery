@@ -569,6 +569,22 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
     <button class="route-btn" onclick="calcRoute()">🚗 동선 계산</button>
   </div>
 
+  <!-- 기사 위치 추적 바 -->
+  <div id="driverBar" style="display:flex;align-items:center;gap:7px;padding:7px 12px;border-bottom:1px solid var(--border);background:#f0fdf4;">
+    <span style="font-size:.72rem;font-weight:800;color:#16a34a;">🚐 기사 위치</span>
+    <span id="driverStatus" style="font-size:.7rem;color:var(--muted);">미연결</span>
+    <div style="margin-left:auto;display:flex;gap:5px;">
+      <button onclick="shareDriverLink()"
+        style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:.7rem;font-weight:700;font-family:inherit;cursor:pointer;touch-action:manipulation;">
+        📤 기사님 링크 공유
+      </button>
+      <button onclick="toggleDriverTracking()"  id="trackBtn"
+        style="padding:4px 10px;background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:6px;font-size:.7rem;font-weight:700;font-family:inherit;cursor:pointer;touch-action:manipulation;">
+        추적 ON
+      </button>
+    </div>
+  </div>
+
   <!-- 주소 검색창 -->
   <div style="padding:8px 12px;border-bottom:1px solid var(--border);background:#f0f4ff;">
     <div style="font-size:.7rem;font-weight:700;color:#2563eb;margin-bottom:5px;">🔍 주소 검색 → 입력폼 자동 채우기</div>
@@ -581,7 +597,6 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
         검색
       </button>
     </div>
-    <!-- 검색 결과 목록 -->
     <div id="mapSearchResults" style="display:none;margin-top:6px;background:#fff;border:1px solid #93c5fd;border-radius:8px;max-height:180px;overflow-y:auto;"></div>
   </div>
   <!-- 시간 필터 -->
@@ -857,6 +872,7 @@ async function initApp() {
   if(window.kakao && kakao.maps) kakao.maps.load(()=>{
     initMap();
     if(rows.length) setTimeout(rebuildPreviewMarkers, 1000);
+    setTimeout(startDriverWatch, 1500); // 기사 위치 감지 시작
   });
 }
 
@@ -1688,7 +1704,87 @@ function clearAddrPreview() {
   if(_addrPreviewOverlay) { _addrPreviewOverlay.setMap(null); _addrPreviewOverlay=null; }
 }
 // ════════════════════════════════════
-//  지도 주소 검색 → 입력폼 채우기
+//  기사 위치 추적
+// ════════════════════════════════════
+let _driverMarker = null, _driverOverlay = null;
+let _driverTracking = false;
+
+// ── 관리자: 기사 위치 실시간 감지 ──
+function startDriverWatch() {
+  if(!window._fbWatch) return;
+  const dateKey = document.getElementById('fDate').value || todayKey();
+  window._fbWatch('driver_location/'+dateKey, (data)=>{
+    if(!data) {
+      updateDriverStatus('미연결');
+      return;
+    }
+    const { lat, lng, updatedAt } = data;
+    updateDriverStatus('🟢 실시간 위치 수신중', updatedAt);
+    updateDriverMarker(lat, lng, updatedAt);
+  });
+}
+
+function updateDriverMarker(lat, lng, updatedAt) {
+  if(!_map || !window.kakao) return;
+  const pos = new kakao.maps.LatLng(lat, lng);
+  const timeStr = updatedAt ? new Date(updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : '';
+
+  if(_driverMarker) _driverMarker.setPosition(pos);
+  else {
+    _driverMarker = new kakao.maps.Marker({ position:pos, map:_map });
+  }
+
+  if(_driverOverlay) _driverOverlay.setMap(null);
+  const el = document.createElement('div');
+  el.style.cssText = 'background:#16a34a;color:#fff;font-weight:900;font-size:11px;padding:4px 10px;border-radius:12px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);margin-top:-42px;white-space:nowrap;';
+  el.textContent = '🚐 기사님' + (timeStr ? ' '+timeStr : '');
+  _driverOverlay = new kakao.maps.CustomOverlay({ position:pos, map:_map, yAnchor:1, content:el, zIndex:20 });
+
+  // 추적 ON이면 지도 중심 이동
+  if(_driverTracking) _map.setCenter(pos);
+}
+
+function updateDriverStatus(msg, updatedAt) {
+  const el = document.getElementById('driverStatus');
+  if(!el) return;
+  if(updatedAt) {
+    const timeStr = new Date(updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    el.textContent = msg + ' (' + timeStr + ')';
+  } else {
+    el.textContent = msg;
+  }
+}
+
+function toggleDriverTracking() {
+  _driverTracking = !_driverTracking;
+  const btn = document.getElementById('trackBtn');
+  if(_driverTracking) {
+    btn.textContent = '추적 OFF';
+    btn.style.background = '#16a34a';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#16a34a';
+    toast('🚐 기사 위치 추적 ON','ok');
+  } else {
+    btn.textContent = '추적 ON';
+    btn.style.background = 'var(--surface)';
+    btn.style.color = 'var(--muted)';
+    btn.style.borderColor = 'var(--border)';
+    toast('추적 OFF','');
+  }
+}
+
+// ── 기사님 위치 전송 링크 공유 ──
+function shareDriverLink() {
+  const dateKey = document.getElementById('fDate').value || todayKey();
+  const url = `https://sketchkim-hub.github.io/delivery/driver.html?date=${dateKey}`;
+  const txt = `🚐 배송 위치 전송 링크\n${url}\n\n위 링크를 열고 "위치 전송 시작" 버튼을 눌러주세요.`;
+  if(navigator.share) {
+    navigator.share({ title:'배송 위치 전송', text:txt }).catch(()=>copyText(txt));
+  } else { copyText(txt); }
+}
+
+// ════════════════════════════════════
+//  기사 위치 JS 끝
 // ════════════════════════════════════
 let _searchMarker = null, _searchOverlay = null;
 
