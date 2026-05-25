@@ -278,7 +278,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   color:var(--muted);
 }
 .filter-btn.on { background:var(--ink); color:#fff; border-color:var(--ink); }
-#kakaoMap { width:100%; height:45%; flex-shrink:0; }
+#kakaoMap { width:100%; height:45%; min-height:250px; flex-shrink:0; }
 .route-list { flex:1; overflow-y:auto; padding:10px 14px; }
 .route-card { display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); font-size:.8rem; }
 .route-num { min-width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; font-weight:900; font-size:.72rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -2074,6 +2074,13 @@ async function rebuildPreviewMarkers() {
 function initMap() {
   const c=document.getElementById('kakaoMap');
   if(!c) return;
+
+  // PC에서 컨테이너 높이가 0이면 강제 지정
+  if(c.offsetHeight === 0) {
+    c.style.height = '300px';
+    c.style.minHeight = '300px';
+  }
+
   const center = new kakao.maps.LatLng(DEPART.lat, DEPART.lng);
   _map = new kakao.maps.Map(c, { center, level:5 });
   _markers=[]; _polyline=null;
@@ -2082,7 +2089,9 @@ function initMap() {
     content:`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 문창전통시장</div>`
   });
   _markers.push(ov);
-  // geocoding으로 정밀 보정 (성공하면 업데이트)
+  // 초기화 후 resize 한번
+  setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); }, 300);
+  // geocoding으로 정밀 보정
   geocodeAddr(DEPART.addr).then(r=>{
     if(r){ DEPART.lat=r.lat; DEPART.lng=r.lng; }
   });
@@ -2260,15 +2269,24 @@ async function calcRoute() {
 
   // 도로 경로로 지도 그리기
   toast('🗺️ 도로 경로 계산 중...','');
-  if(isMobile) {
-    // 모바일: 지도 재생성(700ms) 완료 후 그리기
-    setTimeout(async()=>{
-      await updateMapRouteDone();
-      setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); },100);
-    }, 750);
-  } else {
+
+  async function drawRoute() {
+    // _map이 없으면 초기화 먼저
+    if(!_map && window.kakao && kakao.maps) {
+      await new Promise(res=>{
+        kakao.maps.load(()=>{ initMap(); setTimeout(res, 300); });
+      });
+    }
+    if(!_map) { toast('지도 초기화 실패. 페이지를 새로고침해 주세요','err'); return; }
     await updateMapRouteDone();
     setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); },200);
+  }
+
+  if(isMobile) {
+    // 모바일: 지도 재생성(750ms) 완료 후 그리기
+    setTimeout(async()=>{ await drawRoute(); }, 750);
+  } else {
+    await drawRoute();
   }
 
   renderRouteList();
@@ -2284,11 +2302,22 @@ function renderRouteList() {
   const canOrder  = true;
 
   const rl=document.getElementById('routeList');
+
+  // ── 중복 감지 ──
+  const seen = new Map(); // key: name+addr → 첫 번째 idx
+  const dupIdxs = new Set(); // 중복 항목 인덱스
+  pts.forEach((p,idx)=>{
+    const key = (p.row.name||'') + '|' + (p.row.addr||'');
+    if(seen.has(key)) dupIdxs.add(idx);
+    else seen.set(key, idx);
+  });
+
   rl.innerHTML=`
-    <div style="font-size:.75rem;color:var(--muted);padding:6px 0 4px;display:flex;align-items:center;gap:6px;">
+    <div style="font-size:.75rem;color:var(--muted);padding:6px 0 4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <span>✅ ${pts.length}건 최적 순서</span>
       ${_routeFilter!=='all'?`<span style="background:var(--ink);color:#fff;padding:1px 7px;border-radius:10px;font-size:.68rem;">${_routeFilter==='am'?'오전':'오후'}</span>`:''}
       ${bad.length?`<span style="color:var(--accent);">${bad.length}건 실패</span>`:''}
+      ${dupIdxs.size?`<button onclick="removeRouteDups()" style="background:#fef3c7;color:#b45309;border:1px solid #fbbf24;border-radius:6px;padding:2px 8px;font-size:.68rem;font-weight:700;font-family:inherit;cursor:pointer;touch-action:manipulation;">⚠️ 중복 ${dupIdxs.size}건 제거</button>`:''}
       ${canOrder?`<span style="margin-left:auto;font-size:.68rem;color:var(--muted);">☰ 드래그로 순서 변경</span>`:''}
     </div>
     <div class="route-card" style="background:#f0f4ff;">
@@ -2298,10 +2327,11 @@ function renderRouteList() {
     pts.map((p,idx)=>{
       const r=p.row;
       const done=p.done||false;
+      const isDup = dupIdxs.has(idx);
       const goods=rows.filter(x=>r.groupId?x.groupId===r.groupId:x===r).map(x=>x.goods).join(', ');
       const upDis  = idx===0 ? 'disabled' : '';
       const downDis= idx===pts.length-1 ? 'disabled' : '';
-      const doneStyle = done ? 'opacity:.45;background:#f3f4f6;' : '';
+      const doneStyle = done ? 'opacity:.45;background:#f3f4f6;' : isDup ? 'background:#fffbeb;border-left:3px solid #f59e0b;' : '';
       const doneText  = done ? 'text-decoration:line-through;color:var(--muted);' : '';
       return `<div class="route-card route-card-wrap" id="rc_${idx}" data-idx="${idx}" style="${doneStyle}">
         ${canOrder?`<div class="drag-handle" title="드래그해서 이동">☰</div>`:''}
@@ -2309,21 +2339,26 @@ function renderRouteList() {
           <button class="ord-btn" onclick="moveRoute(${idx},-1)" ${upDis} ${done?'disabled':''} title="위로">▲</button>
           <button class="ord-btn" onclick="moveRoute(${idx},+1)" ${downDis} ${done?'disabled':''} title="아래로">▼</button>
         </div>`:''}
-        <div class="route-num" style="${done?'background:#9ca3af;':''}">${done?'✓':idx+1}</div>
+        <div class="route-num" style="${done?'background:#9ca3af;':isDup?'background:#f59e0b;':''}">${done?'✓':isDup?'중복':idx+1}</div>
         <div class="route-info" style="flex:1;">
-          <div class="route-name" style="${doneText}">${r.store} · ${r.name}</div>
+          <div class="route-name" style="${doneText}">${r.store} · ${r.name}${isDup?` <span style="font-size:.65rem;background:#f59e0b;color:#fff;padding:1px 5px;border-radius:4px;">중복</span>`:''}</div>
           <div class="route-addr" style="${doneText}">📍 ${r.addr}</div>
           <div class="route-goods">📦 ${goods}${r.phone?` <span style="color:var(--muted);">📞${r.phone}</span>`:''}</div>
         </div>
-        <button onclick="toggleDone(${idx})"
-          style="flex-shrink:0;margin-left:6px;padding:6px 8px;border:none;border-radius:7px;
-          font-size:.72rem;font-weight:800;font-family:inherit;cursor:pointer;
-          touch-action:manipulation;-webkit-tap-highlight-color:transparent;
-          ${done
-            ? 'background:#f3f4f6;color:#9ca3af;'
-            : 'background:#dcfce7;color:#16a34a;'}">
-          ${done?'↩ 취소':'✅ 완료'}
-        </button>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;margin-left:6px;">
+          ${isDup?`<button onclick="removeRouteItem(${idx})"
+            style="padding:5px 7px;background:#fef3c7;color:#b45309;border:1px solid #fbbf24;border-radius:6px;
+            font-size:.7rem;font-weight:800;font-family:inherit;cursor:pointer;touch-action:manipulation;white-space:nowrap;">
+            🗑 삭제
+          </button>`:''}
+          <button onclick="toggleDone(${idx})"
+            style="padding:5px 7px;border:none;border-radius:6px;
+            font-size:.7rem;font-weight:800;font-family:inherit;cursor:pointer;
+            touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap;
+            ${done?'background:#f3f4f6;color:#9ca3af;':'background:#dcfce7;color:#16a34a;'}">
+            ${done?'↩ 취소':'✅ 완료'}
+          </button>
+        </div>
       </div>`;
     }).join('') +
     (bad.length?`<div style="margin-top:8px;padding:10px;background:#fff5f2;border-radius:8px;font-size:.75rem;">
@@ -2337,6 +2372,37 @@ function renderRouteList() {
 
   // 드래그 앤 드롭 초기화
   setTimeout(initDragSort, 50);
+}
+
+// ── 동선 항목 개별 삭제 ──
+async function removeRouteItem(idx) {
+  const pts = window._optRoute.points;
+  const r = pts[idx].row;
+  if(!confirm(`"${r.store} · ${r.name}" 을(를) 동선에서 삭제하시겠습니까?`)) return;
+  pts.splice(idx, 1);
+  await saveRouteOrder();
+  updateMapRouteDone(true);
+  renderRouteList();
+  toast(`🗑 삭제됨`,'ok');
+}
+
+// ── 동선 중복 전체 제거 ──
+async function removeRouteDups() {
+  const pts = window._optRoute.points;
+  const seen = new Map();
+  const toRemove = new Set();
+  pts.forEach((p,idx)=>{
+    const key = (p.row.name||'') + '|' + (p.row.addr||'');
+    if(seen.has(key)) toRemove.add(idx);
+    else seen.set(key, idx);
+  });
+  if(!toRemove.size) return;
+  if(!confirm(`중복 ${toRemove.size}건을 동선에서 모두 제거하시겠습니까?`)) return;
+  window._optRoute.points = pts.filter((_,i)=>!toRemove.has(i));
+  await saveRouteOrder();
+  updateMapRouteDone(true);
+  renderRouteList();
+  toast(`✅ 중복 ${toRemove.size}건 제거됨`,'ok');
 }
 
 // ════════════════════════════════════
