@@ -84,11 +84,11 @@ window.dispatchEvent(new Event('firebase-ready'));
 body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background: var(--surface); color: var(--ink); font-size: 14px; }
 
 /* ── 헤더 ── */
-.hdr { background: var(--ink); color: #fff; height: 52px; display: flex; align-items: center; padding: 0 16px; gap: 10px; position: sticky; top: 0; z-index: 100; }
-.hdr-title { font-size: 1rem; font-weight: 800; }
+.hdr { background: var(--ink); color: #fff; height: 52px; display: flex; align-items: center; padding: 0 8px; gap: 5px; position: sticky; top: 0; z-index: 100; overflow: hidden; flex-wrap: nowrap; }
+.hdr-title { font-size: .82rem; font-weight: 800; white-space: nowrap; flex-shrink: 0; }
 .hdr-title span { color: var(--accent2); }
-.hdr-date { margin-left: auto; font-size: 0.75rem; opacity: .6; }
-.hdr-btn { background: var(--accent); color: #fff; border: none; padding: 7px 13px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.hdr-date { display: none; }
+.hdr-btn { background: var(--accent); color: #fff; border: none; padding: 6px 9px; border-radius: 6px; font-size: .7rem; font-weight: 700; font-family: inherit; cursor: pointer; white-space: nowrap; flex-shrink: 0; touch-action: manipulation; }
 .hdr-btn.green { background: #16a34a; }
 
 /* ── 레이아웃 ── */
@@ -240,6 +240,8 @@ body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background
 table { width:100%; border-collapse:collapse; font-size:.8rem; }
 thead { position:sticky; top:0; z-index:10; }
 thead th { background:var(--ink); color:rgba(255,255,255,.85); padding:8px 9px; text-align:center; font-size:.7rem; font-weight:700; white-space:nowrap; }
+/* 배송시간 컬럼 폭 고정 */
+thead th:nth-child(3) { width:44px; min-width:44px; }
 tbody tr { border-bottom:1px solid var(--border); transition:background .1s; }
 tbody tr:nth-child(even) { background:#faf9f7; }
 tbody tr:hover { background:#fff5f2; }
@@ -372,7 +374,9 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 /* ── 모바일 반응형 ── */
 @media (max-width: 768px) {
   .layout { grid-template-columns:1fr; height:auto; }
-  .hdr-date { display:none; }
+  .hdr-date { display:none !important; }
+  .hdr-btn { padding: 6px 8px; font-size: .68rem; }
+  .hdr-title { font-size: .78rem; }
 
   /* 공통 패널 */
   .panel-left, .panel-mid, .panel-right {
@@ -439,12 +443,12 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 <!-- ── 헤더 ── -->
 <div class="hdr">
   <span>🚐</span>
-  <div class="hdr-title">배송 <span>일일보고서</span></div>
-  <div id="syncStatus" style="display:none;font-size:.72rem;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:12px;white-space:nowrap;"></div>
+  <div class="hdr-title"><span>배송관리</span></div>
+  <div id="syncStatus" style="display:none;font-size:.65rem;background:rgba(255,255,255,.15);padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0;"></div>
   <div class="hdr-date" id="hdrDate"></div>
-  <button id="notiBtn" onclick="enableNotification()" style="display:none;background:#f59e0b;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:.72rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">🔔 알림켜기</button>
-  <button class="hdr-btn" style="background:#7c3aed;" onclick="openHistoryModal()">📂 이전주문</button>
-  <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선 계산</button>
+  <button id="notiBtn" onclick="enableNotification()" style="display:none;background:#f59e0b;color:#fff;border:none;padding:5px 8px;border-radius:6px;font-size:.65rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0;">🔔</button>
+  <button class="hdr-btn purple" style="background:#7c3aed;" onclick="openHistoryModal()">📂</button>
+  <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선</button>
   <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
 </div>
 
@@ -1136,7 +1140,11 @@ function renderTable() {
       return `<tr>
         <td style="${gl}font-size:.7rem;color:var(--muted);">${r.seq}</td>
         <td style="font-size:.75rem;">${grp&&!isF?'':r.date}</td>
-        <td style="font-size:.75rem;font-weight:700;white-space:nowrap;">${r.time}</td>
+        <td style="font-size:.72rem;font-weight:700;line-height:1.4;max-width:44px;">${
+          r.time && r.time!=='-'
+            ? r.time.replace(/(오전|오후)\s*/,'$1<br>')
+            : '-'
+        }</td>
         <td class="tc-store">${r.store}</td>
         <td class="tc-name">${grp&&!isF?`<span style="color:var(--muted);font-size:.72rem;">↳${r.name}</span>`:r.name}</td>
         <td style="font-weight:600;">📦 ${r.goods}${r.item&&r.item!=='-'?` <span style="font-size:.68rem;background:var(--ink2);color:#fff;padding:1px 5px;border-radius:8px;">${r.item}</span>`:''}</td>
@@ -1149,7 +1157,7 @@ function renderTable() {
           ${isF||!grp?`<div style="display:flex;gap:2px;">
             <button class="print-btn" onclick="editRow(${i})" title="수정" style="color:#2563eb;">✏️</button>
             <button class="print-btn" onclick="printLabel(${i})" title="라벨">🖨</button>
-            <button class="del-btn" onclick="delRow(${i})" title="삭제">✕</button>
+        <button class="del-btn" onclick="delRow(${i})" title="삭제">✕</button>
           </div>`:''}
         </td>
       </tr>`;
@@ -1306,9 +1314,12 @@ function cancelEdit() {
 function delRow(i) {
   const r=rows[i];
   if(r.groupId && r.groupSize>1) {
-    if(!confirm(`"${r.name}" 묶음 ${r.groupSize}개를 모두 삭제하시겠습니까?`)) return;
+    if(!confirm(`"${r.store} · ${r.name}" 묶음 ${r.groupSize}개를 삭제하시겠습니까?`)) return;
     rows=rows.filter(x=>x.groupId!==r.groupId);
-  } else { rows.splice(i,1); }
+  } else {
+    if(!confirm(`"${r.store} · ${r.name}" 배송을 삭제하시겠습니까?`)) return;
+    rows.splice(i,1);
+  }
   rows.forEach((x,idx)=>x.seq=idx+1);
   updateSeq(); saveRows(); renderTable();
   rebuildPreviewMarkers();
