@@ -291,8 +291,29 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 .share-btn { padding:11px 8px; background:var(--ink2); color:#fff; border:none; border-radius:9px; font-size:.8rem; font-weight:900; font-family:inherit; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; }
 
 /* 순서 조정 */
-.route-card-wrap { position:relative; }
-.route-card-wrap.dragging { opacity:.5; background:#fff5f2; border-radius:8px; }
+.route-card-wrap {
+  position:relative;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.route-card-wrap.dragging {
+  opacity:.4;
+  background:#fff5f2;
+  border-radius:8px;
+}
+.route-card-wrap.drag-over {
+  border-top: 3px solid var(--accent);
+  background: #fff5f2;
+}
+.drag-handle {
+  display:flex; align-items:center; justify-content:center;
+  width:22px; flex-shrink:0; cursor:grab;
+  color:#c0bdb8; font-size:1rem; padding:2px 0;
+  touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.drag-handle:active { cursor:grabbing; color:var(--accent); }
 .order-btns { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
 .ord-btn {
   width:26px; height:22px; border:1px solid var(--border); border-radius:5px;
@@ -303,7 +324,13 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 }
 .ord-btn:hover:not(:disabled) { background:var(--ink2); color:#fff; border-color:var(--ink2); }
 .ord-btn:disabled { opacity:.25; cursor:default; }
-.reorder-tip { font-size:.7rem; color:var(--muted); text-align:center; padding:6px 0 2px; }
+.drag-ghost {
+  position:fixed; pointer-events:none; z-index:9999;
+  background:#fff; border:2px solid var(--accent); border-radius:10px;
+  padding:8px 12px; font-size:.8rem; font-weight:700;
+  box-shadow:0 8px 24px rgba(0,0,0,.2); opacity:.9;
+  max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
 
 /* ── 이전 주문 탭 ── */
 .hist-tab {
@@ -2262,7 +2289,7 @@ function renderRouteList() {
       <span>✅ ${pts.length}건 최적 순서</span>
       ${_routeFilter!=='all'?`<span style="background:var(--ink);color:#fff;padding:1px 7px;border-radius:10px;font-size:.68rem;">${_routeFilter==='am'?'오전':'오후'}</span>`:''}
       ${bad.length?`<span style="color:var(--accent);">${bad.length}건 실패</span>`:''}
-      ${canOrder?`<span style="margin-left:auto;font-size:.68rem;color:var(--muted);">↑↓ 순서 조정 가능</span>`:''}
+      ${canOrder?`<span style="margin-left:auto;font-size:.68rem;color:var(--muted);">☰ 드래그로 순서 변경</span>`:''}
     </div>
     <div class="route-card" style="background:#f0f4ff;">
       <div class="route-num" style="background:#1a1a2e;font-size:.65rem;width:28px;height:28px;">출발</div>
@@ -2276,7 +2303,8 @@ function renderRouteList() {
       const downDis= idx===pts.length-1 ? 'disabled' : '';
       const doneStyle = done ? 'opacity:.45;background:#f3f4f6;' : '';
       const doneText  = done ? 'text-decoration:line-through;color:var(--muted);' : '';
-      return `<div class="route-card route-card-wrap" id="rc_${idx}" style="${doneStyle}">
+      return `<div class="route-card route-card-wrap" id="rc_${idx}" data-idx="${idx}" style="${doneStyle}">
+        ${canOrder?`<div class="drag-handle" title="드래그해서 이동">☰</div>`:''}
         ${canOrder?`<div class="order-btns">
           <button class="ord-btn" onclick="moveRoute(${idx},-1)" ${upDis} ${done?'disabled':''} title="위로">▲</button>
           <button class="ord-btn" onclick="moveRoute(${idx},+1)" ${downDis} ${done?'disabled':''} title="아래로">▼</button>
@@ -2306,10 +2334,118 @@ function renderRouteList() {
       <button class="kakao-btn" onclick="openKakaoApp()">🗺️ 맵으로 열기</button>
       <button class="share-btn" onclick="shareRoute()">📤 기사님께 공유</button>
     </div>`;
+
+  // 드래그 앤 드롭 초기화
+  setTimeout(initDragSort, 50);
 }
 
-// ── 배송 완료 토글 ──
-// ── 배송 완료 토글 (Firebase 실시간 동기화) ──
+// ════════════════════════════════════
+//  드래그 앤 드롭 순서 변경
+// ════════════════════════════════════
+function initDragSort() {
+  const rl = document.getElementById('routeList');
+  if(!rl) return;
+  const cards = rl.querySelectorAll('.route-card-wrap[data-idx]');
+  if(!cards.length) return;
+
+  let dragSrc = null;    // 드래그 중인 카드 인덱스
+  let ghostEl = null;    // 고스트 엘리먼트
+  let overIdx = null;    // 현재 위에 있는 카드 인덱스
+
+  cards.forEach(card => {
+    const handle = card.querySelector('.drag-handle');
+    if(!handle) return;
+
+    // ── 마우스 드래그 (PC) ──
+    handle.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      startDrag(card, e.clientX, e.clientY);
+    });
+
+    // ── 터치 드래그 (모바일) ──
+    handle.addEventListener('touchstart', e=>{
+      e.preventDefault();
+      const t = e.touches[0];
+      startDrag(card, t.clientX, t.clientY);
+    }, {passive:false});
+  });
+
+  function startDrag(card, x, y) {
+    dragSrc = parseInt(card.dataset.idx);
+    card.classList.add('dragging');
+
+    // 고스트 생성
+    const r = window._optRoute.points[dragSrc]?.row;
+    ghostEl = document.createElement('div');
+    ghostEl.className = 'drag-ghost';
+    ghostEl.textContent = `${dragSrc+1}. ${r?.store||''} · ${r?.name||''}`;
+    ghostEl.style.left = (x+10)+'px';
+    ghostEl.style.top  = (y-20)+'px';
+    document.body.appendChild(ghostEl);
+
+    // 이벤트 등록
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onEnd);
+    document.addEventListener('touchmove', onTouchMove, {passive:false});
+    document.addEventListener('touchend',  onTouchEnd);
+  }
+
+  function onMove(e) { moveGhost(e.clientX, e.clientY); }
+  function onTouchMove(e) {
+    e.preventDefault();
+    const t = e.touches[0];
+    moveGhost(t.clientX, t.clientY);
+  }
+
+  function moveGhost(x, y) {
+    if(!ghostEl) return;
+    ghostEl.style.left = (x+10)+'px';
+    ghostEl.style.top  = (y-20)+'px';
+
+    // 어느 카드 위에 있는지 감지
+    document.querySelectorAll('.route-card-wrap[data-idx]').forEach(c=>{
+      c.classList.remove('drag-over');
+    });
+    const el = document.elementFromPoint(x, y);
+    const target = el?.closest('.route-card-wrap[data-idx]');
+    if(target) {
+      const idx = parseInt(target.dataset.idx);
+      if(idx !== dragSrc) {
+        target.classList.add('drag-over');
+        overIdx = idx;
+      }
+    }
+  }
+
+  function onEnd() { finishDrag(); }
+  function onTouchEnd() { finishDrag(); }
+
+  async function finishDrag() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onEnd);
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend',  onTouchEnd);
+
+    if(ghostEl) { ghostEl.remove(); ghostEl=null; }
+    document.querySelectorAll('.route-card-wrap').forEach(c=>{
+      c.classList.remove('dragging','drag-over');
+    });
+
+    if(dragSrc !== null && overIdx !== null && dragSrc !== overIdx) {
+      // 순서 변경
+      const pts = window._optRoute.points;
+      const item = pts.splice(dragSrc, 1)[0];
+      pts.splice(overIdx, 0, item);
+
+      await saveRouteOrder();
+      updateMapRouteDone(true);
+      renderRouteList();
+      toast(`✅ ${overIdx+1}번으로 이동됨`,'ok');
+    }
+
+    dragSrc = null; overIdx = null;
+  }
+}
 async function toggleDone(idx) {
   if(!window._optRoute) return;
   const pts = window._optRoute.points;
