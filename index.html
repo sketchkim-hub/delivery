@@ -368,6 +368,14 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 .btn-cancel { padding:8px 14px; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--ink); font-family:inherit; font-size:.83rem; font-weight:600; cursor:pointer; }
 .btn-ok { padding:8px 16px; border-radius:7px; border:none; background:var(--accent); color:#fff; font-family:inherit; font-size:.83rem; font-weight:700; cursor:pointer; }
 
+/* ── PIN 로그인 ── */
+.pin-dot {
+  width:14px; height:14px; border-radius:50%;
+  border:2px solid rgba(255,255,255,.4);
+  background:transparent; transition:background .15s;
+}
+.pin-dot.filled { background:#fff; border-color:#fff; }
+
 /* ── 토스트 ── */
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--ink); color:#fff; padding:9px 20px; border-radius:30px; font-size:.82rem; font-weight:600; pointer-events:none; opacity:0; transition:opacity .2s,transform .2s; z-index:9999; white-space:nowrap; }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
@@ -467,6 +475,39 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 </head>
 <body>
 
+<!-- ── 로그인 화면 ── -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--ink);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
+  <div style="width:100%;max-width:340px;text-align:center;">
+    <div style="font-size:3rem;margin-bottom:12px;">🚐</div>
+    <div style="color:#fff;font-size:1.2rem;font-weight:900;margin-bottom:6px;">배송 관리</div>
+    <div style="color:rgba(255,255,255,.5);font-size:.82rem;margin-bottom:28px;">문창전통시장 배달 서비스</div>
+
+    <div style="background:rgba(255,255,255,.08);border-radius:14px;padding:22px;">
+      <div style="color:rgba(255,255,255,.7);font-size:.8rem;margin-bottom:12px;">PIN 번호를 입력하세요</div>
+      <div style="display:flex;justify-content:center;gap:10px;margin-bottom:20px;" id="pinDots">
+        <div class="pin-dot" id="pd0"></div>
+        <div class="pin-dot" id="pd1"></div>
+        <div class="pin-dot" id="pd2"></div>
+        <div class="pin-dot" id="pd3"></div>
+      </div>
+      <div id="pinError" style="color:#f87171;font-size:.78rem;margin-bottom:10px;min-height:18px;"></div>
+      <!-- 숫자 패드 -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(n=>`
+          <button onclick="pinInput('${n}')" ${n===''?'style="visibility:hidden;"':''}
+            style="padding:16px;background:rgba(255,255,255,.12);color:#fff;border:none;
+            border-radius:10px;font-size:1.1rem;font-weight:700;font-family:inherit;
+            cursor:pointer;touch-action:manipulation;transition:background .1s;"
+            onmousedown="this.style.background='rgba(255,255,255,.25)'"
+            onmouseup="this.style.background='rgba(255,255,255,.12)'"
+            ontouchstart="this.style.background='rgba(255,255,255,.25)'"
+            ontouchend="this.style.background='rgba(255,255,255,.12)'">${n}</button>`).join('')}
+      </div>
+    </div>
+    <div style="color:rgba(255,255,255,.3);font-size:.7rem;margin-top:16px;">초기 PIN: 1234 (설정에서 변경 가능)</div>
+  </div>
+</div>
+
 <!-- ── 헤더 ── -->
 <div class="hdr">
   <span>🚐</span>
@@ -477,6 +518,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   <button class="hdr-btn purple" style="background:#7c3aed;" onclick="openHistoryModal()">📂</button>
   <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선</button>
   <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
+  <button class="hdr-btn" onclick="logout()" style="background:#374151;padding:6px 7px;" title="로그아웃">🔒</button>
 </div>
 
 <div class="layout">
@@ -525,7 +567,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   </div>
 
   <!-- 금액 -->
-  <div class="field"><label>전체 금액 (원)</label><input type="number" id="fAmt" placeholder="0" min="0" step="1"></div>
+  <div class="field"><label>전체 금액 (원)</label><input type="text" inputmode="numeric" pattern="[0-9]*" id="fAmt" placeholder="0" autocomplete="off" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
 
   <div class="divider"></div>
 
@@ -785,6 +827,101 @@ async function loadTimes() {
 }
 
 // ════════════════════════════════════
+//  PIN 로그인
+// ════════════════════════════════════
+const DEFAULT_PIN = '1234';
+let _pinInput = '';
+let _isLoggedIn = false;
+
+function checkLogin() {
+  // 세션 내 로그인 상태 확인 (sessionStorage)
+  if(sessionStorage.getItem('ds_auth') === 'ok') {
+    _isLoggedIn = true;
+    document.getElementById('loginScreen').style.display = 'none';
+    return true;
+  }
+  document.getElementById('loginScreen').style.display = 'flex';
+  return false;
+}
+
+function pinInput(val) {
+  if(val === '⌫') {
+    _pinInput = _pinInput.slice(0,-1);
+  } else if(val !== '' && _pinInput.length < 4) {
+    _pinInput += val;
+  }
+  // 점 업데이트
+  for(let i=0;i<4;i++) {
+    const dot = document.getElementById('pd'+i);
+    if(dot) dot.classList.toggle('filled', i < _pinInput.length);
+  }
+  document.getElementById('pinError').textContent = '';
+  // 4자리 입력 완료 시 확인
+  if(_pinInput.length === 4) setTimeout(verifyPin, 150);
+}
+
+async function verifyPin() {
+  // Firebase에서 PIN 가져오기 (없으면 기본값 1234)
+  let storedPin = DEFAULT_PIN;
+  if(window._fbGet) {
+    const fbPin = await window._fbGet('config/pin');
+    if(fbPin) storedPin = fbPin;
+  } else {
+    storedPin = localStorage.getItem('ds_pin') || DEFAULT_PIN;
+  }
+
+  if(_pinInput === storedPin) {
+    // 로그인 성공
+    sessionStorage.setItem('ds_auth', 'ok');
+    _isLoggedIn = true;
+    document.getElementById('loginScreen').style.display = 'none';
+    startApp();
+  } else {
+    // 실패
+    document.getElementById('pinError').textContent = '❌ PIN이 올바르지 않습니다';
+    // 점 흔들기 효과
+    const dots = document.getElementById('pinDots');
+    dots.style.transform = 'translateX(8px)';
+    setTimeout(()=>dots.style.transform='translateX(-8px)',80);
+    setTimeout(()=>dots.style.transform='translateX(4px)',160);
+    setTimeout(()=>dots.style.transform='',240);
+    _pinInput = '';
+    for(let i=0;i<4;i++) {
+      const dot = document.getElementById('pd'+i);
+      if(dot) dot.classList.remove('filled');
+    }
+  }
+}
+
+// PIN 변경 함수 (설정에서 호출)
+async function changePin() {
+  const newPin = prompt('새 PIN 4자리를 입력하세요:');
+  if(!newPin || !/^\d{4}$/.test(newPin)) {
+    return toast('4자리 숫자만 입력 가능합니다','err');
+  }
+  const confirm2 = prompt('새 PIN을 다시 입력하세요:');
+  if(newPin !== confirm2) return toast('PIN이 일치하지 않습니다','err');
+
+  if(window._fbSet) await window._fbSet('config/pin', newPin);
+  localStorage.setItem('ds_pin', newPin);
+  toast('✅ PIN이 변경되었습니다','ok');
+}
+
+// 로그아웃
+function logout() {
+  if(!confirm('로그아웃 하시겠습니까?')) return;
+  sessionStorage.removeItem('ds_auth');
+  _isLoggedIn = false;
+  _pinInput = '';
+  for(let i=0;i<4;i++) {
+    const dot = document.getElementById('pd'+i);
+    if(dot) dot.classList.remove('filled');
+  }
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+// ════════════════════════════════════
 //  초기화
 // ════════════════════════════════════
 async function initApp() {
@@ -821,8 +958,41 @@ async function initApp() {
   document.getElementById('fDate').addEventListener('change', async (e)=>{
     const newDate = e.target.value;
     showSyncStatus('⏳ '+newDate+' 로드 중...');
+
+    // 이전 날짜 동선/마커 완전 초기화
+    clearMarkers();
+    clearPreviewMarkers();
+    if(_searchMarker)  { _searchMarker.setMap(null);  _searchMarker=null; }
+    if(_searchOverlay) { _searchOverlay.setMap(null); _searchOverlay=null; }
+    if(_markerInfoOverlay) { _markerInfoOverlay.setMap(null); _markerInfoOverlay=null; }
+    if(_driverMarker)  { _driverMarker.setMap(null);  _driverMarker=null; }
+    if(_driverOverlay) { _driverOverlay.setMap(null); _driverOverlay=null; }
+    window._optRoute = null;
+    window._badList  = null;
+    document.getElementById('routeList').innerHTML =
+      `<div class="empty-state"><div class="ei">🚗</div><p style="font-size:.85rem;">동선 계산 버튼을 눌러주세요</p></div>`;
+    if(_map) {
+      _map.setCenter(new kakao.maps.LatLng(DEPART.lat, DEPART.lng));
+      _map.setLevel(5);
+    }
+
     await loadRows(newDate);
     renderTable(); updateSeq();
+
+    // 새 날짜 미리보기 마커 표시
+    if(rows.length) setTimeout(rebuildPreviewMarkers, 500);
+
+    // 새 날짜 실시간 감지 재등록
+    if(window._fbWatch) {
+      window._fbWatch('done/'+newDate, (doneData)=>{
+        if(!window._optRoute) return;
+        const pts=window._optRoute.points;
+        let changed=false;
+        pts.forEach((p,i)=>{ const nd=!!(doneData&&doneData[i]); if(p.done!==nd){p.done=nd;changed=true;} });
+        if(changed){ renderRouteList(); updateMapRouteDone(); }
+      });
+    }
+
     showSyncStatus('✅ '+newDate+' 로드 완료');
     setTimeout(()=>showSyncStatus(''), 2000);
   });
@@ -939,22 +1109,30 @@ function startApp() {
   if(document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initApp);
   } else {
-    // DOMContentLoaded 이미 지난 경우 즉시 실행
     initApp();
   }
 }
 
+// 앱 시작 진입점
+function bootApp() {
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ()=> checkLogin() ? startApp() : null);
+  } else {
+    if(!checkLogin()) return; // 로그인 화면 표시
+    startApp();
+  }
+}
+
 if(window._firebaseReady) {
-  startApp();
+  bootApp();
 } else {
-  window.addEventListener('firebase-ready', startApp);
-  // Firebase 3초 내 미준비 시 localStorage로 fallback
+  window.addEventListener('firebase-ready', bootApp);
   if(document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', ()=>{
-      setTimeout(()=>{ if(!window._firebaseReady) initApp(); }, 3000);
+      setTimeout(()=>{ if(!window._firebaseReady) bootApp(); }, 3000);
     });
   } else {
-    setTimeout(()=>{ if(!window._firebaseReady) initApp(); }, 3000);
+    setTimeout(()=>{ if(!window._firebaseReady) bootApp(); }, 3000);
   }
 }
 
@@ -1096,7 +1274,7 @@ function addRow() {
   const addr = [selGuVal, dong].filter(Boolean).join(' ') || '-';
   const store = stores[selStore];
   const groupId = Date.now();
-  const amtInt = amt ? Math.round(Number(amt)) : '';
+  const amtInt = amt ? parseInt(amt, 10) || 0 : '';
 
   // 물품 없으면 빈 항목 하나로 처리
   const addList = goodsList.length ? goodsList : [{name:'-', item:'-'}];
@@ -1176,7 +1354,7 @@ function renderTable() {
         <td class="tc-name">${grp&&!isF?`<span style="color:var(--muted);font-size:.72rem;">↳${r.name}</span>`:r.name}</td>
         <td style="font-weight:600;">📦 ${r.goods}${r.item&&r.item!=='-'?` <span style="font-size:.68rem;background:var(--ink2);color:#fff;padding:1px 5px;border-radius:8px;">${r.item}</span>`:''}</td>
         <td class="tc-addr">${r.addr}</td>
-        <td class="tc-amt">${r.amt!==''&&r.amt!==undefined?Number(r.amt).toLocaleString():''}</td>
+        <td class="tc-amt">${r.amt!==''&&r.amt!==undefined?parseInt(r.amt,10).toLocaleString():''}</td>
         <td style="font-size:.75rem;">${grp&&!isF?'':r.item||'-'}</td>
         <td>${grp&&!isF?'':r.box}</td>
         <td>${grp&&!isF?'':'<span class="gu-tag '+r.gu+'">'+r.gu+'</span>'}</td>
@@ -1279,7 +1457,7 @@ function saveEdit() {
 
   const addr  = [selGuVal, dong].filter(Boolean).join(' ') || '-';
   const store = stores[selStore];
-  const amtInt= amt ? Math.round(Number(amt)) : '';
+  const amtInt = amt ? parseInt(amt, 10) || 0 : '';
   const newGroupId = _editGroupId || Date.now();
 
   // 기존 행의 위치 기억
@@ -1646,7 +1824,7 @@ async function exportExcel() {
   const header = ['순번','날짜','배송시간','점포','고객명','물품','주소','금액','품목','상자','지역구'];
   const data = [header, ...sortedRows.map(r=>[
     r._excelSeq, r.date, r.time, r.store, r.name, r.goods, r.addr,
-    r.amt!==''&&r.amt!==undefined?Math.round(Number(r.amt)):'',
+    r.amt!==''&&r.amt!==undefined ? parseInt(r.amt,10)||0 : '',
     r.item&&r.item!=='-'?r.item:'',
     r.box!=='-'&&r.box!==''?Number(r.box):'', r.gu
   ])];
