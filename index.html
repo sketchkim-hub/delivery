@@ -476,12 +476,11 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 <body>
 
 <!-- ── 로그인 화면 ── -->
-<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--ink);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--ink);z-index:9999;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
   <div style="width:100%;max-width:340px;text-align:center;">
     <div style="font-size:3rem;margin-bottom:12px;">🚐</div>
     <div style="color:#fff;font-size:1.2rem;font-weight:900;margin-bottom:6px;">배송 관리</div>
     <div style="color:rgba(255,255,255,.5);font-size:.82rem;margin-bottom:28px;">문창전통시장 배달 서비스</div>
-
     <div style="background:rgba(255,255,255,.08);border-radius:14px;padding:22px;">
       <div style="color:rgba(255,255,255,.7);font-size:.8rem;margin-bottom:12px;">PIN 번호를 입력하세요</div>
       <div style="display:flex;justify-content:center;gap:10px;margin-bottom:20px;" id="pinDots">
@@ -492,17 +491,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
       </div>
       <div id="pinError" style="color:#f87171;font-size:.78rem;margin-bottom:10px;min-height:18px;"></div>
       <!-- 숫자 패드 -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-        ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(n=>`
-          <button onclick="pinInput('${n}')" ${n===''?'style="visibility:hidden;"':''}
-            style="padding:16px;background:rgba(255,255,255,.12);color:#fff;border:none;
-            border-radius:10px;font-size:1.1rem;font-weight:700;font-family:inherit;
-            cursor:pointer;touch-action:manipulation;transition:background .1s;"
-            onmousedown="this.style.background='rgba(255,255,255,.25)'"
-            onmouseup="this.style.background='rgba(255,255,255,.12)'"
-            ontouchstart="this.style.background='rgba(255,255,255,.25)'"
-            ontouchend="this.style.background='rgba(255,255,255,.12)'">${n}</button>`).join('')}
-      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;" id="pinPad"></div>
     </div>
     <div style="color:rgba(255,255,255,.3);font-size:.7rem;margin-top:16px;">초기 PIN: 1234 (설정에서 변경 가능)</div>
   </div>
@@ -834,14 +823,39 @@ let _pinInput = '';
 let _isLoggedIn = false;
 
 function checkLogin() {
-  // 세션 내 로그인 상태 확인 (sessionStorage)
+  // 세션 내 로그인 상태 확인
   if(sessionStorage.getItem('ds_auth') === 'ok') {
     _isLoggedIn = true;
     document.getElementById('loginScreen').style.display = 'none';
     return true;
   }
-  document.getElementById('loginScreen').style.display = 'flex';
+  // 키패드 동적 생성
+  buildPinPad();
+  const ls = document.getElementById('loginScreen');
+  ls.style.display = 'flex';
   return false;
+}
+
+function buildPinPad() {
+  const pad = document.getElementById('pinPad');
+  if(!pad || pad.children.length > 0) return; // 이미 생성됨
+  const keys = [1,2,3,4,5,6,7,8,9,'',0,'⌫'];
+  keys.forEach(n => {
+    const btn = document.createElement('button');
+    btn.textContent = n === '' ? '' : String(n);
+    btn.style.cssText = 'padding:16px;background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:10px;font-size:1.1rem;font-weight:700;font-family:inherit;cursor:pointer;touch-action:manipulation;transition:background .13s;';
+    if(n === '') {
+      btn.style.visibility = 'hidden';
+    } else {
+      btn.addEventListener('click', () => pinInput(String(n)));
+      btn.addEventListener('mousedown',   () => btn.style.background='rgba(255,255,255,.28)');
+      btn.addEventListener('mouseup',     () => btn.style.background='rgba(255,255,255,.12)');
+      btn.addEventListener('mouseleave',  () => btn.style.background='rgba(255,255,255,.12)');
+      btn.addEventListener('touchstart',  () => btn.style.background='rgba(255,255,255,.28)', {passive:true});
+      btn.addEventListener('touchend',    () => btn.style.background='rgba(255,255,255,.12)', {passive:true});
+    }
+    pad.appendChild(btn);
+  });
 }
 
 function pinInput(val) {
