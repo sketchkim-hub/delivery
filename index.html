@@ -362,6 +362,12 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 }
 .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:500; align-items:center; justify-content:center; }
 .modal-bg.open { display:flex; }
+.tbl-filter-btn {
+  padding:5px 12px; border:1.5px solid var(--border); border-radius:7px;
+  background:#fff; font-size:.75rem; font-weight:700; font-family:inherit;
+  cursor:pointer; touch-action:manipulation; transition:all .13s; color:var(--muted);
+}
+.tbl-filter-btn.on { background:var(--ink); color:#fff; border-color:var(--ink); }
 .modal { background:#fff; border-radius:14px; padding:22px; width:300px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,.2); }
 .modal h3 { font-size:.95rem; font-weight:800; margin-bottom:14px; }
 .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
@@ -609,8 +615,14 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 <div class="panel panel-mid" id="pMid" style="flex-direction:column;">
   <div class="sum-bar">
     <div class="sum-total"><span id="sumN">0</span><small>건</small></div>
-    <div id="guPills" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+    <div id="guPills" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;"></div>
     <button class="clear-btn" onclick="clearAll()">전체 삭제</button>
+  </div>
+  <!-- 오전/오후 필터 -->
+  <div style="display:flex;gap:6px;padding:7px 12px;border-bottom:1px solid var(--border);background:var(--surface);align-items:center;">
+    <button id="tblFilterAll" class="tbl-filter-btn on" onclick="setTableFilter('all')">전체 <span id="tfCntAll">0</span></button>
+    <button id="tblFilterAM"  class="tbl-filter-btn"   onclick="setTableFilter('am')">오전 <span id="tfCntAM">0</span></button>
+    <button id="tblFilterPM"  class="tbl-filter-btn"   onclick="setTableFilter('pm')">오후 <span id="tfCntPM">0</span></button>
   </div>
   <div class="tbl-wrap">
     <table>
@@ -754,7 +766,12 @@ let rows    = [];
 let goodsList = [];
 let selStore = null, selGuVal = null, selTime = null;
 
-function todayKey() { return new Date().toISOString().slice(0,10); }
+function todayKey() {
+  const d = new Date();
+  // 한국 로컬 날짜 기준 (UTC+9)
+  const kst = new Date(d.getTime() + 9*60*60*1000);
+  return kst.toISOString().slice(0,10);
+}
 
 // ── 날짜별 행 저장 (Firebase + localStorage 이중 저장) ──
 async function saveRows() {
@@ -940,7 +957,8 @@ function logout() {
 // ════════════════════════════════════
 async function initApp() {
   const d = new Date();
-  const dateKey = d.toISOString().slice(0,10);
+  const kst = new Date(d.getTime() + 9*60*60*1000);
+  const dateKey = kst.toISOString().slice(0,10);
   document.getElementById('fDate').value = dateKey;
   document.getElementById('hdrDate').textContent =
     d.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
@@ -1345,14 +1363,44 @@ function resetFields() {
 }
 
 // ════════════════════════════════════
-//  테이블 렌더
+//  배송 목록 시간 필터
 // ════════════════════════════════════
+let _tableFilter = 'all'; // 'all' | 'am' | 'pm'
+
+function setTableFilter(f) {
+  _tableFilter = f;
+  document.getElementById('tblFilterAll').classList.toggle('on', f==='all');
+  document.getElementById('tblFilterAM').classList.toggle('on',  f==='am');
+  document.getElementById('tblFilterPM').classList.toggle('on',  f==='pm');
+  renderTable();
+}
+
+function getFilteredRows() {
+  if(_tableFilter==='all') return rows;
+  const kw = _tableFilter==='am' ? '오전' : '오후';
+  return rows.filter(r=>(r.time||'').includes(kw));
+}
 function renderTable() {
   const tb = document.getElementById('tbody');
-  if(!rows.length) {
-    tb.innerHTML=`<tr><td colspan="12"><div class="empty-state"><div class="ei">📦</div><p>왼쪽에서 정보를 입력하세요</p></div></td></tr>`;
+
+  // 필터 카운트 업데이트
+  const amCnt = rows.filter(r=>(r.time||'').includes('오전')&&(r.groupFirst||!r.groupId)).length;
+  const pmCnt = rows.filter(r=>(r.time||'').includes('오후')&&(r.groupFirst||!r.groupId)).length;
+  const el_all = document.getElementById('tfCntAll');
+  const el_am  = document.getElementById('tfCntAM');
+  const el_pm  = document.getElementById('tfCntPM');
+  if(el_all) el_all.textContent = rows.filter(r=>r.groupFirst||!r.groupId).length;
+  if(el_am)  el_am.textContent  = amCnt;
+  if(el_pm)  el_pm.textContent  = pmCnt;
+
+  // 필터 적용
+  const filtered = getFilteredRows();
+
+  if(!filtered.length) {
+    tb.innerHTML=`<tr><td colspan="12"><div class="empty-state"><div class="ei">${rows.length?'🔍':'📦'}</div><p>${rows.length?'해당 배송이 없습니다':'왼쪽에서 정보를 입력하세요'}</p></div></td></tr>`;
   } else {
-    tb.innerHTML = rows.map((r,i)=>{
+    tb.innerHTML = filtered.map((r,i)=>{
+      const origIdx = rows.indexOf(r); // 원래 인덱스 (수정/삭제용)
       const grp = r.groupId && r.groupSize>1;
       const isF = r.groupFirst;
       const gl = `border-left:3px solid ${isF?'var(--accent)':'#f0c0a8'};`;
@@ -1374,9 +1422,9 @@ function renderTable() {
         <td>${grp&&!isF?'':'<span class="gu-tag '+r.gu+'">'+r.gu+'</span>'}</td>
         <td>
           ${isF||!grp?`<div style="display:flex;gap:2px;">
-            <button class="print-btn" onclick="editRow(${i})" title="수정" style="color:#2563eb;">✏️</button>
-            <button class="print-btn" onclick="printLabel(${i})" title="라벨">🖨</button>
-        <button class="del-btn" onclick="delRow(${i})" title="삭제">✕</button>
+            <button class="print-btn" onclick="editRow(${origIdx})" title="수정" style="color:#2563eb;">✏️</button>
+            <button class="print-btn" onclick="printLabel(${origIdx})" title="라벨">🖨</button>
+            <button class="del-btn" onclick="delRow(${origIdx})" title="삭제">✕</button>
           </div>`:''}
         </td>
       </tr>`;
