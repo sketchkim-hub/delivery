@@ -513,6 +513,7 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   <button class="hdr-btn purple" style="background:#7c3aed;" onclick="openHistoryModal()">📂</button>
   <button class="hdr-btn green" onclick="calcRoute()">🗺️ 동선</button>
   <button class="hdr-btn" onclick="exportExcel()">📥 엑셀</button>
+  <button class="hdr-btn" onclick="openDataMgr()" style="background:#374151;" title="데이터 관리">🗂️</button>
   <button class="hdr-btn" onclick="logout()" style="background:#374151;padding:6px 7px;" title="로그아웃">🔒</button>
 </div>
 
@@ -716,6 +717,36 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 
     <div class="modal-footer" style="margin-top:12px;">
       <button class="btn-cancel" onclick="closeHistoryModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 데이터 관리 모달 -->
+<div class="modal-bg" id="dataMgrModal">
+  <div class="modal" style="width:420px;max-height:85vh;display:flex;flex-direction:column;">
+    <h3>🗂️ 데이터 관리</h3>
+    <p style="font-size:.78rem;color:var(--muted);margin-bottom:14px;">월별로 배송 데이터를 조회하고 삭제할 수 있습니다</p>
+
+    <!-- 월 선택 -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <input type="month" id="mgr_month" style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:.9rem;font-family:inherit;">
+      <button onclick="loadMonthData()" style="padding:9px 16px;background:var(--ink2);color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">
+        📋 조회
+      </button>
+    </div>
+
+    <!-- 조회 결과 -->
+    <div id="mgr_result" style="flex:1;overflow-y:auto;max-height:50vh;min-height:60px;"></div>
+
+    <!-- 삭제 버튼 -->
+    <div id="mgr_delBtn" style="display:none;margin-top:12px;">
+      <button onclick="deleteMonthData()" style="width:100%;padding:13px;background:#ef4444;color:#fff;border:none;border-radius:9px;font-size:.9rem;font-weight:800;font-family:inherit;cursor:pointer;">
+        🗑 선택한 달 데이터 전체 삭제
+      </button>
+    </div>
+
+    <div class="modal-footer" style="margin-top:10px;">
+      <button class="btn-cancel" onclick="closeDataMgr()">닫기</button>
     </div>
   </div>
 </div>
@@ -1856,6 +1887,116 @@ function addRegularToForm(idx) {
   if(window.innerWidth<=768) mobTab(0);
   toast(`✅ ${c.name} 정보 입력됨 — 물품/금액을 입력하세요`,'ok');
 }
+
+// ════════════════════════════════════
+//  데이터 관리 (월별 삭제)
+// ════════════════════════════════════
+let _mgrMonthDates = [];
+
+function openDataMgr() {
+  const kst = new Date(Date.now() + 9*60*60*1000);
+  document.getElementById('mgr_month').value = kst.toISOString().slice(0,7);
+  document.getElementById('mgr_result').innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:16px;">월을 선택 후 조회 버튼을 누르세요</div>';
+  document.getElementById('mgr_delBtn').style.display = 'none';
+  _mgrMonthDates = [];
+  document.getElementById('dataMgrModal').classList.add('open');
+}
+function closeDataMgr() {
+  document.getElementById('dataMgrModal').classList.remove('open');
+}
+
+async function loadMonthData() {
+  const month = document.getElementById('mgr_month').value;
+  if(!month) return toast('월을 선택하세요','err');
+  const el = document.getElementById('mgr_result');
+  el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);">⏳ 로드 중...</div>';
+  document.getElementById('mgr_delBtn').style.display = 'none';
+  _mgrMonthDates = [];
+
+  let allRows = {};
+  if(window._fbGet) allRows = await window._fbGet('rows') || {};
+  Object.keys(localStorage).forEach(k=>{
+    if(k.startsWith('ds2_rows_')) {
+      const date = k.replace('ds2_rows_','');
+      if(!allRows[date]) {
+        try { allRows[date] = JSON.parse(localStorage.getItem(k)); } catch(e){}
+      }
+    }
+  });
+
+  const monthDates = Object.keys(allRows).filter(d=>d.startsWith(month)).sort();
+  if(!monthDates.length) {
+    el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--muted);"><div style="font-size:1.5rem;margin-bottom:8px;">📭</div><b>${month}</b> 데이터가 없습니다</div>`;
+    return;
+  }
+  _mgrMonthDates = monthDates;
+
+  let totalRows=0, totalCustomers=0;
+  const dateStats = monthDates.map(d=>{
+    const data = Array.isArray(allRows[d]) ? allRows[d] : Object.values(allRows[d]||{});
+    const customers = [...new Set(data.filter(r=>r.groupFirst||!r.groupId).map(r=>r.name))].length;
+    totalRows += data.length;
+    totalCustomers += customers;
+    return {date:d, count:data.length, customers};
+  });
+
+  el.innerHTML = `
+    <div style="background:#fef3c7;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:.82rem;">
+      <b>⚠️ ${month} 월 전체</b><br>
+      📅 ${monthDates.length}일 · 👤 ${totalCustomers}명 · 📦 ${totalRows}건
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;">
+      ${dateStats.map(s=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;
+          padding:8px 12px;background:var(--surface);border-radius:7px;font-size:.82rem;">
+          <span>📅 ${s.date}</span>
+          <span style="color:var(--muted);">👤 ${s.customers}명 · ${s.count}건</span>
+        </div>`).join('')}
+    </div>`;
+  document.getElementById('mgr_delBtn').style.display = 'block';
+}
+
+async function deleteMonthData() {
+  const month = document.getElementById('mgr_month').value;
+  if(!_mgrMonthDates.length) return;
+  if(!confirm(`⚠️ ${month} 월 데이터를 완전히 삭제하시겠습니까?\n\n📅 ${_mgrMonthDates.length}일치 데이터가 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+  const confirm2 = prompt(`정말 삭제하려면 "${month}" 을 그대로 입력하세요:`);
+  if(confirm2 !== month) { toast('입력이 일치하지 않아 취소되었습니다','err'); return; }
+
+  const el = document.getElementById('mgr_result');
+  el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--muted);">⏳ 삭제 중...</div>';
+
+  for(const date of _mgrMonthDates) {
+    if(window._fbSet) {
+      await window._fbSet('rows/'+date, null);
+      await window._fbSet('done/'+date, null);
+      await window._fbSet('route_order/'+date, null);
+      await window._fbSet('requests/'+date, null);
+      await window._fbSet('requests_rows/'+date, null);
+      await window._fbSet('driver_location/'+date, null);
+    }
+    localStorage.removeItem('ds2_rows_'+date);
+  }
+
+  const currentDate = document.getElementById('fDate').value;
+  if(currentDate.startsWith(month)) {
+    rows=[]; renderTable(); updateSeq();
+    clearMarkers(); clearPreviewMarkers();
+    window._optRoute=null;
+    document.getElementById('routeList').innerHTML=
+      '<div class="empty-state"><div class="ei">🚗</div><p style="font-size:.85rem;">동선 계산 버튼을 눌러주세요</p></div>';
+  }
+
+  el.innerHTML = `<div style="text-align:center;padding:20px;color:#16a34a;">
+    <div style="font-size:1.5rem;margin-bottom:8px;">✅</div>
+    <b>${month}</b> 데이터 ${_mgrMonthDates.length}일치 삭제 완료
+  </div>`;
+  document.getElementById('mgr_delBtn').style.display='none';
+  _mgrMonthDates=[];
+  toast(`✅ ${month} 월 데이터 삭제 완료`,'ok');
+}
+
 async function exportExcel() {
   if(!rows.length) return toast('데이터가 없습니다','err');
   const date = document.getElementById('fDate').value.replace(/-/g,'');
