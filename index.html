@@ -1046,13 +1046,16 @@ async function initApp() {
     if(rows.length) setTimeout(rebuildPreviewMarkers, 500);
 
     // 새 날짜 실시간 감지 재등록
+    // 새 날짜 실시간 감지 재등록
     if(window._fbWatch) {
-      window._fbWatch('done/'+newDate, (doneData)=>{
-        if(!window._optRoute) return;
-        const pts=window._optRoute.points;
-        let changed=false;
-        pts.forEach((p,i)=>{ const nd=!!(doneData&&doneData[i]); if(p.done!==nd){p.done=nd;changed=true;} });
-        if(changed){ renderRouteList(); updateMapRouteDone(); }
+      window._syncCache = { done: null, order: null };
+      setupRouteSync(newDate);
+      window._fbWatch('rows/'+newDate, (data)=>{
+        if(!data) return;
+        const nr = Array.isArray(data) ? data : Object.values(data);
+        if(JSON.stringify(nr) !== JSON.stringify(rows)) {
+          rows = nr; renderTable(); updateSeq();
+        }
       });
     }
 
@@ -1074,55 +1077,18 @@ async function initApp() {
       }
     });
 
-    // 완료 상태 실시간 감지
-    window._fbWatch('done/'+dateKey, (doneData)=>{
-      if(!window._optRoute) return;
-      const pts = window._optRoute.points;
-      let changed = false;
-      pts.forEach((p,i)=>{
-        const nowDone = !!(doneData && doneData[i]);
-        if(p.done !== nowDone) { p.done = nowDone; changed = true; }
-      });
-      if(changed) {
-        renderRouteList();
-        updateMapRouteDone();
-        showSyncStatus('🔄 배송 완료 상태 동기화됨');
-        setTimeout(()=>showSyncStatus(''), 2000);
-      }
-    });
-
-    // 동선 순서 실시간 감지
-    window._fbWatch('route_order/'+dateKey, (orderData)=>{
-      if(!window._optRoute||!orderData) return;
-      const orderArr = Array.isArray(orderData) ? orderData : Object.values(orderData);
-      const pts = window._optRoute.points;
-      const reordered=[];
-      orderArr.forEach(o=>{
-        const found=pts.find(p=>p.row&&p.row.seq===o.rowSeq);
-        if(found){ found.done=o.done||false; reordered.push(found); }
-      });
-      pts.forEach(p=>{ if(!reordered.includes(p)) reordered.push(p); });
-      if(JSON.stringify(reordered.map(p=>p.row?.seq)) !==
-         JSON.stringify(pts.map(p=>p.row?.seq))) {
-        window._optRoute.points = reordered;
-        renderRouteList();
-        updateMapRouteDone();
-        showSyncStatus('🔄 동선 순서 동기화됨');
-        setTimeout(()=>showSyncStatus(''),2000);
-      }
-    });
+    // 완료 상태 + 동선 순서 통합 실시간 감지
+    setupRouteSync(dateKey);
 
     // ── 상인 배송 신청 실시간 감지 ──
     window._fbWatch('requests_rows/'+dateKey, (reqData)=>{
       if(!reqData) return;
       const reqRows = Object.values(reqData);
-      // 이미 추가된 것(fromRequest) 제외하고 새것만 추가
       const existing = rows.filter(r=>r.fromRequest);
       const newReqs = reqRows.filter(r=>
         !existing.some(e=>e.groupId===r.groupId && e.name===r.name)
       );
       if(!newReqs.length) return;
-      // seq 재부여 후 추가
       newReqs.forEach(r=>{ r.seq=rows.length+1; rows.push(r); });
       rows.forEach((x,i)=>x.seq=i+1);
       saveRows(); renderTable(); updateSeq();
@@ -2123,8 +2089,75 @@ function clearAddrPreview() {
   if(_addrPreviewOverlay) { _addrPreviewOverlay.setMap(null); _addrPreviewOverlay=null; }
 }
 // ════════════════════════════════════
-//  기사 위치 추적
+//  동선 실시간 동기화 (완료 + 순서 통합)
 // ════════════════════════════════════
+
+// 다른 기기에서 받은 최신 상태 캐시 (동선 계산 전에 도착할 수 있음)
+window._syncCache = { done: null, order: null };
+
+function setupRouteSync(dateKey) {
+  if(!window._fbWatch) return;
+
+  // ── 완료 상태 감지 ──
+  window._fbWatch('done/'+dateKey, (doneData)=>{
+    // 캐시에 저장 (동선 계산 전 도착해도 나중에 적용)
+    window._syncCache.done = doneData;
+
+    if(!window._optRoute) return; // 동선 없으면 캐시만 저장
+    const pts = window._optRoute.points;
+    let changed = false;
+    pts.forEach((p,i)=>{
+      const nowDone = !!(doneData && doneData[i]);
+      if(p.done !== nowDone) { p.done = nowDone; changed = true; }
+    });
+    if(changed) {
+      renderRouteList();
+      updateMapRouteDone(true);
+      showSyncStatus('🔄 완료 상태 동기화됨');
+      setTimeout(()=>showSyncStatus(''), 2000);
+    }
+  });
+
+  // ── 동선 순서 감지 ──
+  window._fbWatch('route_order/'+dateKey, (orderData)=>{
+    // 캐시에 저장
+    window._syncCache.order = orderData;
+
+    if(!window._optRoute || !orderData) return;
+    applyRouteOrder(orderData, true); // 동기화 알림 표시
+  });
+}
+
+// 저장된 순서 적용 함수 (동선 계산 후 / 실시간 감지 둘 다 사용)
+function applyRouteOrder(orderData, showNotify=false) {
+  if(!window._optRoute || !orderData) return false;
+  const orderArr = Array.isArray(orderData) ? orderData : Object.values(orderData);
+  const pts = window._optRoute.points;
+
+  const reordered = [];
+  orderArr.forEach(o=>{
+    const found = pts.find(p=>p.row && p.row.seq===o.rowSeq);
+    if(found) {
+      found.done = o.done || false; // 순서와 함께 완료 상태도 동기화
+      reordered.push(found);
+    }
+  });
+  // 순서에 없는 항목은 끝에 추가
+  pts.forEach(p=>{ if(!reordered.includes(p)) reordered.push(p); });
+
+  const changed = JSON.stringify(reordered.map(p=>p.row?.seq)) !==
+                  JSON.stringify(pts.map(p=>p.row?.seq));
+
+  window._optRoute.points = reordered;
+  renderRouteList();
+  updateMapRouteDone(true);
+
+  if(showNotify) {
+    showSyncStatus('🔄 동선 순서/완료 동기화됨');
+    setTimeout(()=>showSyncStatus(''), 2500);
+  }
+  return changed;
+}
 let _driverMarker = null, _driverOverlay = null;
 let _driverTracking = false;
 
@@ -2695,6 +2728,19 @@ async function calcRoute() {
 
   renderRouteList();
   toast(`✅ ${delivOnly.length}건 최적 동선 완료`,'ok');
+
+  // 다른 기기에서 이미 받아둔 완료/순서 캐시 즉시 적용
+  if(window._syncCache) {
+    const { done, order } = window._syncCache;
+    if(order) {
+      applyRouteOrder(order, false);
+    } else if(done) {
+      const pts = window._optRoute.points;
+      pts.forEach((p,i)=>{ p.done = !!(done && done[i]); });
+      renderRouteList();
+      updateMapRouteDone(true);
+    }
+  }
 }
 
 // ── 동선 목록 렌더 (▲▼ 순서 조정 + 배송완료 버튼) ──
