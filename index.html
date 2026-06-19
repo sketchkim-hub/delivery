@@ -1606,6 +1606,15 @@ async function runVoiceSearch(query) {
   showVoiceMatches(scored, '', `"${query}" 검색 결과 — 탭하여 선택하세요`);
 }
 
+// 현재 한국 시각 기준 배송시간 자동 선택 (오전 10시 이전→오전, 낮 12시 이후→오후)
+function autoPickTimeByNow() {
+  const kst = new Date(Date.now() + 9*60*60*1000);
+  const hour = kst.getUTCHours();
+  if(hour < 10) pickTimeFixed(0);
+  else if(hour >= 12) pickTimeFixed(1);
+  // 10~12시 사이는 애매하므로 자동 선택하지 않음
+}
+
 function selectVoiceResult(idx) {
   const c = window._voiceSearchResults[idx];
   if(!c) return;
@@ -1626,6 +1635,8 @@ function selectVoiceResult(idx) {
   }
   const parts = (c.addr||'').split(' ');
   document.getElementById('fDong').value = selGuVal ? parts.slice(1).join(' ') : c.addr;
+
+  autoPickTimeByNow();
 
   closeVoiceModal();
   if(window.innerWidth<=768) mobTab(0);
@@ -1733,9 +1744,10 @@ function fillFormFromAI(p) {
     renderGoods();
   }
 
-  // 배송시간
-  if(p.time && p.time.includes('오전')) selTime(0);
-  else if(p.time && p.time.includes('오후')) selTime(1);
+  // 배송시간 — AI가 인식한 시간 우선, 없으면 현재 시각 기준 자동 선택
+  if(p.time && p.time.includes('오전')) pickTimeFixed(0);
+  else if(p.time && p.time.includes('오후')) pickTimeFixed(1);
+  else autoPickTimeByNow();
 
   if(window.innerWidth<=768) mobTab(0);
 }
