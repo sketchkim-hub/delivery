@@ -549,6 +549,11 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
       </button>
     </div>
     <input type="file" id="aiPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="handlePhotoUpload(event)">
+    <div style="text-align:center;margin-top:7px;">
+      <span onclick="showVoiceFallback('fill')" style="color:rgba(255,255,255,.75);font-size:.68rem;text-decoration:underline;cursor:pointer;touch-action:manipulation;">
+        🎤 마이크가 안 되면 텍스트로 직접 입력
+      </span>
+    </div>
     <div id="aiStatus" style="display:none;margin-top:9px;padding:8px 10px;background:rgba(255,255,255,.15);border-radius:7px;color:#fff;font-size:.76rem;text-align:center;"></div>
   </div>
 
@@ -1329,9 +1334,21 @@ function aiStatus(msg, show=true) {
 }
 
 // 음성 인식 객체 생성 (공통)
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+}
+
 function createRecognizer() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) { toast('이 브라우저는 음성 인식을 지원하지 않습니다 (크롬 권장)','err'); return null; }
+  if(!SR) {
+    if(isIOS()) {
+      toast('아이폰 Safari는 음성 인식이 제한적입니다. 텍스트로 입력해주세요','err');
+    } else {
+      toast('이 브라우저는 음성 인식을 지원하지 않습니다 (크롬 권장)','err');
+    }
+    return null;
+  }
   const rec = new SR();
   rec.lang = 'ko-KR';
   rec.continuous = false;
@@ -1340,16 +1357,75 @@ function createRecognizer() {
   return rec;
 }
 
+// ── iOS / 인식실패 대비 텍스트 직접입력 모달 ──
+function showVoiceFallback(mode) {
+  // mode: 'search' | 'fill'
+  const existing = document.getElementById('voiceFallbackModal');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'voiceFallbackModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9300;display:flex;align-items:flex-end;justify-content:center;';
+
+  const title = mode==='search' ? '🔍 검색어 입력' : '🎙️ 배송 내용 입력';
+  const placeholder = mode==='search'
+    ? '예: 영광상회 박정순'
+    : '예: 대성청과 김민수 중구 대흥동 사과 두박스 오만원';
+  const hint = mode==='search'
+    ? '고객명이나 점포명을 입력하면 이전 데이터에서 찾아드립니다'
+    : '점포·고객명·주소·물품·금액을 한 문장으로 입력하면 AI가 자동으로 채워드립니다';
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;">
+      <div style="font-weight:800;font-size:.92rem;margin-bottom:4px;">${title}</div>
+      <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px;">
+        🎤 마이크가 작동하지 않나요? 아래에 직접 입력해도 동일하게 동작합니다.<br>${hint}
+      </div>
+      <textarea id="voiceFallbackInput" placeholder="${placeholder}"
+        style="width:100%;min-height:70px;border:1.5px solid var(--border);border-radius:9px;
+        padding:11px 12px;font-size:.92rem;font-family:inherit;resize:vertical;"></textarea>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="document.getElementById('voiceFallbackModal').remove()"
+          style="flex:1;padding:12px;background:#f3f4f6;color:#6b7280;border:none;border-radius:9px;font-size:.85rem;font-family:inherit;cursor:pointer;">
+          취소
+        </button>
+        <button onclick="submitVoiceFallback('${mode}')"
+          style="flex:2;padding:12px;background:#8b5cf6;color:#fff;border:none;border-radius:9px;font-size:.85rem;font-weight:800;font-family:inherit;cursor:pointer;">
+          ✨ 확인
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(()=>document.getElementById('voiceFallbackInput')?.focus(), 100);
+}
+
+async function submitVoiceFallback(mode) {
+  const text = document.getElementById('voiceFallbackInput').value.trim();
+  if(!text) return toast('내용을 입력하세요','err');
+  document.getElementById('voiceFallbackModal').remove();
+
+  if(mode==='search') {
+    aiStatus('🔍 "' + text + '" 검색 중...');
+    await runVoiceSearch(text);
+  } else {
+    aiStatus('✨ "' + text + '" AI가 분석 중...');
+    await parseVoiceToForm(text);
+  }
+}
+
 // ── ① 음성검색: 단골 고객 데이터에서 퍼지 매칭 ──
 function startVoiceSearch() {
   const rec = createRecognizer();
-  if(!rec) return;
+  if(!rec) { showVoiceFallback('search'); return; }
   const btn = document.getElementById('aiVoiceSearchBtn');
 
   btn.style.background = 'rgba(239,68,68,.5)';
   aiStatus('🎤 듣고 있어요... "영광상회 박정순"처럼 말해주세요');
 
+  let gotResult = false;
+
   rec.onresult = async (e) => {
+    gotResult = true;
     const text = e.results[0][0].transcript;
     aiStatus('🔍 "' + text + '" 검색 중...');
     await runVoiceSearch(text);
@@ -1358,11 +1434,33 @@ function startVoiceSearch() {
   rec.onerror = (e) => {
     btn.style.background = 'rgba(255,255,255,.18)';
     aiStatus('', false);
-    if(e.error !== 'aborted') toast('음성 인식 실패: ' + e.error, 'err');
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      toast('🎤 마이크 권한이 거부되었습니다. 설정에서 허용해주세요','err');
+      showVoiceFallback('search');
+    } else if(e.error === 'no-speech') {
+      toast('음성이 감지되지 않았습니다. 다시 시도하거나 직접 입력하세요','err');
+      showVoiceFallback('search');
+    } else if(e.error !== 'aborted') {
+      toast('음성 인식 오류(' + e.error + '). 직접 입력해주세요','err');
+      showVoiceFallback('search');
+    }
   };
-  rec.onend = () => { btn.style.background = 'rgba(255,255,255,.18)'; };
+  rec.onend = () => {
+    btn.style.background = 'rgba(255,255,255,.18)';
+    // 결과 없이 끝났는데 에러도 없었던 경우 (iOS에서 흔함) → 폴백 제공
+    if(!gotResult) {
+      setTimeout(()=>{
+        aiStatus('', false);
+        toast('음성이 인식되지 않았습니다','err');
+        showVoiceFallback('search');
+      }, 200);
+    }
+  };
 
-  try { rec.start(); } catch(err) { toast('음성 인식을 시작할 수 없습니다','err'); }
+  try { rec.start(); } catch(err) {
+    toast('음성 인식을 시작할 수 없습니다. 직접 입력해주세요','err');
+    showVoiceFallback('search');
+  }
 }
 
 // 단골/이전 데이터에서 퍼지 매칭 검색
@@ -1463,13 +1561,16 @@ function selectVoiceResult(idx) {
 // ── ② 음성입력: 전체 문장을 Claude API로 파싱 ──
 function startVoiceFill() {
   const rec = createRecognizer();
-  if(!rec) return;
+  if(!rec) { showVoiceFallback('fill'); return; }
   const btn = document.getElementById('aiVoiceFillBtn');
 
   btn.style.background = 'rgba(239,68,68,.5)';
   aiStatus('🎙️ 듣고 있어요... "대성청과 김민수 중구 대흥동 사과 두박스 오만원"처럼 말해주세요');
 
+  let gotResult = false;
+
   rec.onresult = async (e) => {
+    gotResult = true;
     const text = e.results[0][0].transcript;
     aiStatus('✨ "' + text + '" AI가 분석 중...');
     await parseVoiceToForm(text);
@@ -1478,11 +1579,32 @@ function startVoiceFill() {
   rec.onerror = (e) => {
     btn.style.background = 'rgba(255,255,255,.18)';
     aiStatus('', false);
-    if(e.error !== 'aborted') toast('음성 인식 실패: ' + e.error, 'err');
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      toast('🎤 마이크 권한이 거부되었습니다. 설정에서 허용해주세요','err');
+      showVoiceFallback('fill');
+    } else if(e.error === 'no-speech') {
+      toast('음성이 감지되지 않았습니다. 다시 시도하거나 직접 입력하세요','err');
+      showVoiceFallback('fill');
+    } else if(e.error !== 'aborted') {
+      toast('음성 인식 오류(' + e.error + '). 직접 입력해주세요','err');
+      showVoiceFallback('fill');
+    }
   };
-  rec.onend = () => { btn.style.background = 'rgba(255,255,255,.18)'; };
+  rec.onend = () => {
+    btn.style.background = 'rgba(255,255,255,.18)';
+    if(!gotResult) {
+      setTimeout(()=>{
+        aiStatus('', false);
+        toast('음성이 인식되지 않았습니다','err');
+        showVoiceFallback('fill');
+      }, 200);
+    }
+  };
 
-  try { rec.start(); } catch(err) { toast('음성 인식을 시작할 수 없습니다','err'); }
+  try { rec.start(); } catch(err) {
+    toast('음성 인식을 시작할 수 없습니다. 직접 입력해주세요','err');
+    showVoiceFallback('fill');
+  }
 }
 
 // Claude API로 자연어 → 구조화 데이터 파싱 (공통 함수)
