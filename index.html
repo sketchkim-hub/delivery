@@ -558,7 +558,8 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
   </div>
 
   <!-- 음성검색 결과 -->
-  <div id="voiceSearchResults" style="display:none;background:#fff;border:2px solid #8b5cf6;border-radius:10px;padding:8px;max-height:240px;overflow-y:auto;margin-top:6px;margin-bottom:4px;box-shadow:0 4px 14px rgba(139,92,246,.25);"></div>
+  <!-- AI 음성 결과는 모달로 표시됨 -->
+
 
   <!-- 날짜/순번 -->
   <div class="row2">
@@ -755,6 +756,23 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 
     <div class="modal-footer" style="margin-top:12px;">
       <button class="btn-cancel" onclick="closeHistoryModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI 음성 결과 모달 -->
+<div class="modal-bg" id="voiceModal">
+  <div class="modal" style="width:440px;max-height:80vh;display:flex;flex-direction:column;">
+    <h3 id="voiceModalTitle">✨ AI 검색 결과</h3>
+    <p id="voiceModalSub" style="font-size:.78rem;color:var(--muted);margin-bottom:12px;"></p>
+
+    <div id="voiceModalContent" style="flex:1;overflow-y:auto;min-height:80px;max-height:54vh;"></div>
+
+    <div class="modal-footer" style="margin-top:12px;display:flex;gap:8px;">
+      <button class="btn-cancel" onclick="closeVoiceModal()" style="flex:1;">닫기</button>
+      <button onclick="closeVoiceModal();showVoiceFallback('fill')" style="flex:1;padding:11px;background:#8b5cf6;color:#fff;border:none;border-radius:9px;font-size:.85rem;font-weight:700;font-family:inherit;cursor:pointer;">
+        🎤 다시 말하기
+      </button>
     </div>
   </div>
 </div>
@@ -1463,25 +1481,72 @@ function startVoiceSearch() {
   }
 }
 
-// 검색 결과를 화면에 표시 (모바일이면 입력 탭으로 자동 전환 + 스크롤)
-function showVoiceMatches(matches, headerText) {
+// 검색 결과를 독립 모달로 표시
+function showVoiceMatches(matches, headerText, subText='') {
   window._voiceSearchResults = matches;
 
-  // 모바일이면 입력 탭으로 강제 전환 (결과창이 숨겨진 패널에 있으면 안 보임)
+  document.getElementById('voiceModalTitle').textContent = '🔍 검색 결과';
+  document.getElementById('voiceModalSub').textContent = subText || headerText;
+
+  const content = document.getElementById('voiceModalContent');
+  content.innerHTML = matches.map((c,i)=>`
+    <div onclick="selectVoiceResult(${i})" class="hist-item" style="cursor:pointer;">
+      <div class="hist-item-info">
+        <div class="hist-item-title">${c.name} <span style="font-size:.7rem;color:var(--muted);">· ${c.store}</span></div>
+        <div class="hist-item-sub">📍 ${c.addr} · 주문 ${c.count}회</div>
+      </div>
+      <button class="hist-add-btn">선택</button>
+    </div>`).join('');
+
+  document.getElementById('voiceModal').classList.add('open');
+}
+
+function closeVoiceModal() {
+  document.getElementById('voiceModal').classList.remove('open');
+}
+
+// AI 분석 결과(파싱된 폼 데이터)를 확인 모달로 표시
+function showVoiceFillPreview(parsed, sourceLabel) {
+  document.getElementById('voiceModalTitle').textContent = '✨ AI 분석 결과';
+  document.getElementById('voiceModalSub').textContent = sourceLabel;
+
+  const rows2 = [
+    ['🏪 점포', parsed.store],
+    ['👤 고객명', parsed.name],
+    ['📞 전화', parsed.phone],
+    ['📍 지역구', parsed.gu],
+    ['🏠 상세주소', parsed.dong],
+    ['📦 물품', parsed.goods],
+    ['💰 금액', parsed.amt ? Number(parsed.amt).toLocaleString()+'원' : ''],
+    ['📦 상자', parsed.box],
+    ['🕐 시간', parsed.time],
+  ].filter(([,v])=>v);
+
+  const content = document.getElementById('voiceModalContent');
+  content.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+      ${rows2.map(([label,val])=>`
+        <div style="display:flex;justify-content:space-between;padding:9px 12px;background:var(--surface);border-radius:7px;font-size:.85rem;">
+          <span style="color:var(--muted);">${label}</span>
+          <span style="font-weight:700;">${val}</span>
+        </div>`).join('')}
+    </div>
+    <button onclick="confirmVoiceFill()" style="width:100%;padding:13px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:.92rem;font-weight:800;font-family:inherit;cursor:pointer;">
+      ✅ 입력폼에 채우기
+    </button>`;
+
+  window._pendingAiParsed = parsed;
+  document.getElementById('voiceModal').classList.add('open');
+}
+
+function confirmVoiceFill() {
+  if(window._pendingAiParsed) {
+    fillFormFromAI(window._pendingAiParsed);
+    window._pendingAiParsed = null;
+  }
+  closeVoiceModal();
   if(window.innerWidth<=768) mobTab(0);
-
-  const el = document.getElementById('voiceSearchResults');
-  el.style.display = 'block';
-  el.innerHTML = `<div style="font-size:.7rem;color:#8b5cf6;font-weight:800;padding:4px 6px;">${headerText}</div>` +
-    matches.map((c,i)=>`
-      <div onclick="selectVoiceResult(${i})" style="padding:9px 10px;border-bottom:1px solid #f0eef9;cursor:pointer;touch-action:manipulation;border-radius:6px;"
-        onmouseover="this.style.background='#faf5ff'" onmouseout="this.style.background=''">
-        <div style="font-weight:700;font-size:.85rem;">${c.name} <span style="color:var(--muted);font-size:.7rem;">· ${c.store}</span></div>
-        <div style="font-size:.72rem;color:var(--muted);">📍 ${c.addr} · ${c.count}회 주문</div>
-      </div>`).join('');
-
-  // 결과창으로 스크롤 이동 (보이도록)
-  setTimeout(()=>{ el.scrollIntoView({behavior:'smooth', block:'center'}); }, 150);
+  toast('✨ 입력폼에 채워졌습니다 — 확인 후 추가하세요','ok');
 }
 async function findLocalMatches(query) {
   let allDates = {};
@@ -1530,19 +1595,21 @@ async function findLocalMatches(query) {
 // 단골/이전 데이터에서 퍼지 매칭 검색 (화면 렌더링 포함)
 async function runVoiceSearch(query) {
   const scored = await findLocalMatches(query);
-
   aiStatus('', false);
-  const el = document.getElementById('voiceSearchResults');
 
   if(!scored.length) {
-    el.style.display = 'block';
-    el.innerHTML = `<div style="padding:12px;text-align:center;color:var(--muted);font-size:.82rem;">
-      "${query}" 검색 결과가 없습니다</div>`;
-    setTimeout(()=>{ el.style.display='none'; }, 3000);
+    document.getElementById('voiceModalTitle').textContent = '🔍 검색 결과 없음';
+    document.getElementById('voiceModalSub').textContent = `"${query}" 와(과) 일치하는 데이터가 없습니다`;
+    document.getElementById('voiceModalContent').innerHTML =
+      `<div style="text-align:center;padding:24px;color:var(--muted);">
+        <div style="font-size:2rem;margin-bottom:8px;">🔍</div>
+        다른 이름으로 다시 시도해보세요
+      </div>`;
+    document.getElementById('voiceModal').classList.add('open');
     return;
   }
 
-  showVoiceMatches(scored, `🔍 "${query}" 검색 결과 — 선택하세요`);
+  showVoiceMatches(scored, '', `"${query}" 검색 결과 — 탭하여 선택하세요`);
 }
 
 function selectVoiceResult(idx) {
@@ -1566,7 +1633,7 @@ function selectVoiceResult(idx) {
   const parts = (c.addr||'').split(' ');
   document.getElementById('fDong').value = selGuVal ? parts.slice(1).join(' ') : c.addr;
 
-  document.getElementById('voiceSearchResults').style.display='none';
+  closeVoiceModal();
   if(window.innerWidth<=768) mobTab(0);
   toast(`✅ ${c.name} 정보 입력됨 — 물품/금액을 입력하세요`,'ok');
 }
@@ -1663,8 +1730,7 @@ async function parseVoiceToForm(text) {
     const matches = await findLocalMatches(text);
     if(matches.length) {
       aiStatus('', false);
-      showVoiceMatches(matches, `🔍 "${text}" 기존 데이터에서 찾았습니다 — 선택하세요`);
-      toast(`✅ "${text}" 기존 데이터 ${matches.length}건 찾았습니다`,'ok');
+      showVoiceMatches(matches, '', `"${text}" 기존 데이터에서 찾았습니다 — 탭하여 선택하세요`);
       return;
     }
     // 로컬 검색 결과가 없으면 AI 분석으로 계속 진행
@@ -1673,9 +1739,8 @@ async function parseVoiceToForm(text) {
   // ② AI 분석 시도
   try {
     const parsed = await aiParseDeliveryText(text);
-    fillFormFromAI(parsed);
     aiStatus('', false);
-    toast('✨ AI가 입력폼을 채웠습니다 — 확인 후 추가하세요','ok');
+    showVoiceFillPreview(parsed, `🎙️ "${text}"`);
   } catch(e) {
     console.error('AI 분석 실패:', e);
     aiStatus('', false);
@@ -1683,8 +1748,7 @@ async function parseVoiceToForm(text) {
     // ③ AI 실패 시 마지막으로 로컬 검색 한 번 더 시도 (혹시 못 찾았을 수도)
     const fallbackMatches = await findLocalMatches(text);
     if(fallbackMatches.length) {
-      showVoiceMatches(fallbackMatches, '🔍 AI 분석은 실패했지만 기존 데이터에서 찾았습니다');
-      toast(`AI 분석은 실패했지만 비슷한 데이터 ${fallbackMatches.length}건을 찾았습니다`,'ok');
+      showVoiceMatches(fallbackMatches, '', 'AI 분석은 실패했지만 비슷한 기존 데이터를 찾았습니다');
     } else {
       toast('AI 분석에 실패했습니다. 직접 입력해주세요','err');
       showVoiceFallback('fill');
@@ -1741,9 +1805,8 @@ async function handlePhotoUpload(event) {
   try {
     const base64 = await fileToBase64(file);
     const parsed = await aiParseDeliveryText('', base64);
-    fillFormFromAI(parsed);
     aiStatus('', false);
-    toast('✨ 사진에서 정보를 추출했습니다 — 확인 후 추가하세요','ok');
+    showVoiceFillPreview(parsed, '📷 사진 분석 결과');
   } catch(e) {
     console.error(e);
     aiStatus('', false);
