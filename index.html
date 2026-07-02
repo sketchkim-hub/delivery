@@ -565,7 +565,20 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
 
   <!-- 점포 -->
   <div>
-    <div class="slabel">점포</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+      <div class="slabel" style="margin-bottom:0;">점포</div>
+      <div style="flex:1;position:relative;">
+        <input type="text" id="storeSearch" placeholder="🔍 점포 검색..."
+          style="width:100%;border:1.5px solid var(--border);border-radius:7px;
+          padding:6px 10px;font-size:.82rem;font-family:inherit;background:var(--surface);"
+          oninput="renderStores()" onfocus="renderStores()" autocomplete="off">
+        <button id="storeSearchClear" onclick="document.getElementById('storeSearch').value='';renderStores();"
+          style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);
+          background:none;border:none;cursor:pointer;color:var(--muted);font-size:.9rem;padding:2px;">✕</button>
+      </div>
+    </div>
+    <!-- 최근 사용 점포 -->
+    <div id="recentStores" style="display:none;margin-bottom:6px;"></div>
     <div class="store-grid" id="storeGrid"></div>
   </div>
 
@@ -1220,19 +1233,88 @@ if(window._firebaseReady) {
 // ════════════════════════════════════
 function renderStores() {
   const g = document.getElementById('storeGrid');
+  const searchEl = document.getElementById('storeSearch');
+  const clearBtn = document.getElementById('storeSearchClear');
+  const query = (searchEl ? searchEl.value.trim() : '').toLowerCase();
+
+  // 검색 X 버튼 표시 제어
+  if(clearBtn) clearBtn.style.display = query ? 'block' : 'none';
+
+  // ── 최근 사용 점포 (상단 고정) ──
+  renderRecentStores();
+
   let html = '';
   if(!stores.length) {
     html += `<div style="grid-column:1/-1;text-align:center;padding:10px 0;font-size:.78rem;color:var(--muted);">아래 버튼으로 점포를 추가하세요</div>`;
   }
-  stores.forEach((s,i) => {
+
+  // 검색 필터 적용
+  const filtered = query
+    ? stores.map((s,i)=>({s,i})).filter(({s})=>s.toLowerCase().includes(query))
+    : stores.map((s,i)=>({s,i}));
+
+  if(query && !filtered.length) {
+    html += `<div style="grid-column:1/-1;text-align:center;padding:10px 0;font-size:.78rem;color:var(--muted);">"${query}" 검색 결과 없음</div>`;
+  }
+
+  filtered.forEach(({s,i}) => {
     html += `<div style="position:relative;">
-      <button class="sbtn${selStore===i?' on':''}" onclick="pickStore(${i})">${s}</button>
+      <button class="sbtn${selStore===i?' on':''}" onclick="pickStore(${i})">${
+        // 검색어 하이라이트
+        query ? s.replace(new RegExp('('+query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark style="background:#fef08a;border-radius:2px;padding:0 1px;">$1</mark>') : s
+      }</button>
       <button class="x" onclick="delStore(${i});event.stopPropagation();" style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;font-size:.62rem;color:rgba(0,0,0,.25);padding:1px 3px;touch-action:manipulation;">✕</button>
     </div>`;
   });
+
   html += `<button class="store-add-btn" onclick="openStoreModal()">＋ 점포 추가</button>`;
   if(stores.length) html += `<button class="store-reset-btn" onclick="resetStores()">🗑 점포 초기화</button>`;
   g.innerHTML = html;
+}
+
+// ── 최근 사용 점포 (배송 데이터 기반, 상위 5개) ──
+function renderRecentStores() {
+  const el = document.getElementById('recentStores');
+  if(!el) return;
+
+  // 최근 rows에서 점포 사용 빈도 집계
+  const freq = {};
+  rows.forEach(r=>{ if(r.store) freq[r.store]=(freq[r.store]||0)+1; });
+
+  // localStorage의 다른 날짜 데이터도 포함 (최근 7일)
+  const kst = new Date(Date.now()+9*60*60*1000);
+  for(let d=0;d<7;d++){
+    const dd=new Date(kst.getTime()-d*86400000);
+    const key='ds2_rows_'+dd.toISOString().slice(0,10);
+    try{
+      const data=JSON.parse(localStorage.getItem(key)||'[]');
+      data.forEach(r=>{ if(r.store) freq[r.store]=(freq[r.store]||0)+1; });
+    }catch(e){}
+  }
+
+  const recentList = Object.entries(freq)
+    .filter(([s])=>stores.includes(s))
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,5)
+    .map(([s])=>s);
+
+  const query = (document.getElementById('storeSearch')?.value||'').trim();
+
+  if(!recentList.length || query) {
+    el.style.display='none'; return;
+  }
+
+  el.style.display='block';
+  el.innerHTML = `
+    <div style="font-size:.68rem;color:var(--muted);margin-bottom:4px;font-weight:700;">⭐ 최근 사용</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;">
+      ${recentList.map(s=>{
+        const i=stores.indexOf(s);
+        return `<button class="sbtn${selStore===i?' on':''}"
+          style="font-size:.78rem;padding:6px 10px;"
+          onclick="pickStore(${i})">${s}</button>`;
+      }).join('')}
+    </div>`;
 }
 function pickStore(i) {
   selStore = (selStore===i) ? null : i;
@@ -2984,7 +3066,6 @@ function initMap() {
   const c=document.getElementById('kakaoMap');
   if(!c) return;
 
-  // PC에서 컨테이너 높이가 0이면 강제 지정
   if(c.offsetHeight === 0) {
     c.style.height = '300px';
     c.style.minHeight = '300px';
@@ -2993,16 +3074,141 @@ function initMap() {
   const center = new kakao.maps.LatLng(DEPART.lat, DEPART.lng);
   _map = new kakao.maps.Map(c, { center, level:5 });
   _markers=[]; _polyline=null;
+
   // 출발지 마커
   const ov=new kakao.maps.CustomOverlay({position:center,map:_map,yAnchor:1,
     content:`<div style="background:#1a1a2e;color:#fff;font-weight:900;font-size:10px;padding:3px 8px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.3);margin-top:-36px;white-space:nowrap;">🏪 문창전통시장</div>`
   });
   _markers.push(ov);
-  // 초기화 후 resize 한번
+
+  // ── 우클릭 / 모바일 롱탭 → 역지오코딩 → 입력폼 채우기 ──
+  kakao.maps.event.addListener(_map, 'rightclick', (e)=>{
+    mapPointToForm(e.latLng);
+  });
+
+  // 모바일 롱탭 (touchstart + 700ms 유지)
+  let _longTapTimer = null;
+  let _longTapMoved = false;
+  c.addEventListener('touchstart', (e)=>{
+    _longTapMoved = false;
+    _longTapTimer = setTimeout(()=>{
+      if(!_longTapMoved && e.touches[0]) {
+        // 터치 좌표 → 카카오맵 LatLng 변환
+        const rect = c.getBoundingClientRect();
+        const x = e.touches[0].clientX - rect.left;
+        const y = e.touches[0].clientY - rect.top;
+        const proj = _map.getProjection();
+        const point = new kakao.maps.Point(x, y);
+        const latLng = proj.coordsFromContainerPoint(point);
+        mapPointToForm(latLng);
+      }
+    }, 700);
+  }, {passive:true});
+  c.addEventListener('touchmove', ()=>{ _longTapMoved=true; clearTimeout(_longTapTimer); }, {passive:true});
+  c.addEventListener('touchend', ()=>clearTimeout(_longTapTimer), {passive:true});
+
   setTimeout(()=>{ if(_map) kakao.maps.event.trigger(_map,'resize'); }, 300);
-  // geocoding으로 정밀 보정
   geocodeAddr(DEPART.addr).then(r=>{
     if(r){ DEPART.lat=r.lat; DEPART.lng=r.lng; }
+  });
+}
+
+// ── 지도 클릭 좌표 → 역지오코딩 → 입력폼 채우기 ──
+let _mapClickMarker = null, _mapClickOverlay = null;
+
+async function mapPointToForm(latLng) {
+  const lat = latLng.getLat();
+  const lng = latLng.getLng();
+
+  // 임시 마커 표시
+  if(_mapClickMarker)  { _mapClickMarker.setMap(null); }
+  if(_mapClickOverlay) { _mapClickOverlay.setMap(null); }
+
+  const pos = new kakao.maps.LatLng(lat, lng);
+  _mapClickMarker = new kakao.maps.Marker({ position:pos, map:_map });
+
+  // 로딩 오버레이
+  const loadEl = document.createElement('div');
+  loadEl.style.cssText = 'background:#6366f1;color:#fff;font-size:.75rem;font-weight:700;padding:4px 10px;border-radius:10px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);margin-top:-40px;white-space:nowrap;';
+  loadEl.textContent = '📍 주소 찾는 중...';
+  _mapClickOverlay = new kakao.maps.CustomOverlay({ position:pos, map:_map, yAnchor:1, content:loadEl, zIndex:15 });
+
+  // 역지오코딩 (좌표 → 주소)
+  const geocoder = new kakao.maps.services.Geocoder();
+  geocoder.coord2Address(lng, lat, async (result, status)=>{
+    if(status !== kakao.maps.services.Status.OK || !result[0]) {
+      loadEl.textContent = '❌ 주소를 찾을 수 없습니다';
+      setTimeout(()=>{ if(_mapClickOverlay) _mapClickOverlay.setMap(null); _mapClickOverlay=null; }, 2000);
+      return;
+    }
+
+    const addrObj = result[0];
+    const roadAddr = addrObj.road_address?.address_name || '';
+    const jibunAddr = addrObj.address?.address_name || '';
+    const useAddr = roadAddr || jibunAddr;
+
+    // 구/동 파싱
+    const guList = ['동구','중구','서구','대덕구','유성구'];
+    let foundGu = null, foundDong = '';
+    guList.forEach(g=>{ if(useAddr.includes(g)) foundGu=g; });
+    if(foundGu) {
+      const idx = useAddr.indexOf(foundGu) + foundGu.length;
+      foundDong = useAddr.slice(idx).trim();
+    } else {
+      foundDong = useAddr.replace(/대전광역시?\s*/,'').replace(/대전\s*/,'').trim();
+    }
+
+    // 오버레이에 주소 표시 + 채우기 버튼
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.2);min-width:180px;max-width:240px;border:2px solid #6366f1;margin-top:-80px;';
+
+    const addrLine = document.createElement('div');
+    addrLine.style.cssText = 'font-size:.8rem;font-weight:700;color:#1a1a2e;margin-bottom:8px;';
+    addrLine.textContent = '📍 ' + (roadAddr || jibunAddr);
+    wrap.appendChild(addrLine);
+
+    if(roadAddr && jibunAddr && roadAddr !== jibunAddr) {
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:.7rem;color:#6b7280;margin-bottom:8px;';
+      sub.textContent = '지번: ' + jibunAddr;
+      wrap.appendChild(sub);
+    }
+
+    const btn = document.createElement('button');
+    btn.style.cssText = 'width:100%;padding:8px;background:#6366f1;color:#fff;border:none;border-radius:7px;font-size:.8rem;font-weight:800;font-family:inherit;cursor:pointer;';
+    btn.textContent = '✅ 입력폼에 채우기';
+    btn.addEventListener('click', ()=>{
+      // 구 선택
+      if(foundGu) {
+        selGuVal = foundGu;
+        document.querySelectorAll('.gu-btn').forEach(b=>b.classList.remove('on'));
+        const gb = document.querySelector(`.gu-btn[data-gu="${foundGu}"]`);
+        if(gb) gb.classList.add('on');
+        const d = document.getElementById('guDisp');
+        d.textContent=foundGu; d.style.color=GU_COLOR[foundGu]; d.style.borderColor=GU_COLOR[foundGu];
+      }
+      document.getElementById('fDong').value = foundDong;
+
+      // 마커/오버레이 제거
+      if(_mapClickMarker)  { _mapClickMarker.setMap(null);  _mapClickMarker=null; }
+      if(_mapClickOverlay) { _mapClickOverlay.setMap(null); _mapClickOverlay=null; }
+
+      // 모바일이면 입력 탭으로 전환
+      if(window.innerWidth<=768) mobTab(0);
+      toast(`✅ ${useAddr} 채워졌습니다`, 'ok');
+    });
+    wrap.appendChild(btn);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.style.cssText = 'width:100%;margin-top:5px;padding:6px;background:#f3f4f6;color:#6b7280;border:none;border-radius:7px;font-size:.75rem;font-family:inherit;cursor:pointer;';
+    closeBtn.textContent = '닫기';
+    closeBtn.addEventListener('click', ()=>{
+      if(_mapClickMarker)  { _mapClickMarker.setMap(null);  _mapClickMarker=null; }
+      if(_mapClickOverlay) { _mapClickOverlay.setMap(null); _mapClickOverlay=null; }
+    });
+    wrap.appendChild(closeBtn);
+
+    _mapClickOverlay.setContent(wrap);
   });
 }
 
