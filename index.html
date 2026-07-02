@@ -579,7 +579,13 @@ td.tc-amt   { font-weight:700; font-variant-numeric:tabular-nums; }
     </div>
     <!-- 최근 사용 점포 -->
     <div id="recentStores" style="display:none;margin-bottom:6px;"></div>
-    <div class="store-grid" id="storeGrid"></div>
+    <div class="store-grid" id="storeGrid" style="max-height:80px;overflow:hidden;transition:max-height .25s ease;"></div>
+    <button id="storeToggleBtn" onclick="toggleStoreGrid()"
+      style="width:100%;margin-top:5px;padding:5px;background:var(--surface);
+      border:1px solid var(--border);border-radius:7px;font-size:.72rem;color:var(--muted);
+      font-family:inherit;cursor:pointer;touch-action:manipulation;display:none;">
+      ▼ 전체 점포 보기
+    </button>
   </div>
 
   <div class="divider"></div>
@@ -1270,6 +1276,34 @@ function renderStores() {
   html += `<button class="store-add-btn" onclick="openStoreModal()">＋ 점포 추가</button>`;
   if(stores.length) html += `<button class="store-reset-btn" onclick="resetStores()">🗑 점포 초기화</button>`;
   g.innerHTML = html;
+
+  // 검색 중이면 전체 펼침, 아니면 2줄(80px) 제한
+  const toggleBtn = document.getElementById('storeToggleBtn');
+  if(query) {
+    g.style.maxHeight = 'none';
+    g.style.overflow = 'visible';
+    if(toggleBtn) toggleBtn.style.display = 'none';
+  } else {
+    // 실제 내용이 2줄 초과인지 확인
+    const fullH = g.scrollHeight;
+    if(fullH > 90) {
+      if(!window._storeExpanded) {
+        g.style.maxHeight = '80px';
+        g.style.overflow = 'hidden';
+      } else {
+        g.style.maxHeight = 'none';
+        g.style.overflow = 'visible';
+      }
+      if(toggleBtn) {
+        toggleBtn.style.display = 'block';
+        toggleBtn.textContent = window._storeExpanded ? '▲ 점포 접기' : `▼ 전체 점포 보기 (${stores.length}개)`;
+      }
+    } else {
+      g.style.maxHeight = 'none';
+      g.style.overflow = 'visible';
+      if(toggleBtn) toggleBtn.style.display = 'none';
+    }
+  }
 }
 
 // ── 최근 사용 점포 (배송 데이터 기반, 상위 5개) ──
@@ -1316,8 +1350,18 @@ function renderRecentStores() {
       }).join('')}
     </div>`;
 }
+function toggleStoreGrid() {
+  window._storeExpanded = !window._storeExpanded;
+  renderStores();
+}
+
 function pickStore(i) {
   selStore = (selStore===i) ? null : i;
+  // 검색창 초기화 (선택 후 검색어 지우기)
+  const searchEl = document.getElementById('storeSearch');
+  if(searchEl && searchEl.value) {
+    searchEl.value = '';
+  }
   renderStores();
   // 점포만 변경 - 다른 입력값은 유지 (초기화 제거)
 }
